@@ -3,7 +3,7 @@
 ## Stack & Versions
 - **Runtime & Shell:** Electron 33+, Node 22.x, TypeScript 5.6+
 - **Frontend UI:** Vite 6, React 19, Tailwind CSS 3.4+, Framer Motion 11+, Lucide React
-- **AI & Audio SDK:** `@google/genai` (Gemini 2.5 Flash Live WebSockets & Gemini 2.5 Pro), `pdf-parse` for local resume extraction
+- **AI & Audio SDK:** `@google/genai` (Gemini 3.8 Flash Live Streams & Gemini 3.1 Pro Reasoning), `pdf-parse` for local resume extraction
 - **Packaging:** `electron-builder` (targets: macOS `.dmg` universal/arm64, Windows `.exe` NSIS)
 
 ## Setup, Build & Packaging Commands
@@ -16,7 +16,7 @@
 ## Project Directory Structure
 - `electron/main.ts` — Electron Main process, native OS stealth window flags, global hotkeys, `desktopCapturer`, system audio loopback
 - `electron/preload.ts` — Strict `contextBridge` IPC API exposing stealth controls, screenshot capture, and audio streams to React
-- `src/services/geminiLive.ts` — Hyper-speed WebSocket & streaming client using `@google/genai` (`gemini-2.5-flash` for sub-300ms answers, `gemini-2.5-pro` for screenshot code solving)
+- `src/services/geminiLive.ts` — Hyper-speed WebSocket & streaming client using `@google/genai` (`gemini-3.8-flash` for sub-300ms answers, `gemini-3.1-pro` for screenshot code solving)
 - `src/services/resumeEngine.ts` — Local PDF/Markdown/Text resume parser, JD matcher, and custom knowledge base card injector
 - `src/components/` — Translucent HUD overlay components with Framer Motion animations
 

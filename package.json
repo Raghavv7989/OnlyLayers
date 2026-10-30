@@ -1,0 +1,16 @@
+{
+  "name": "only-layers",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "npm --prefix only-layers run typecheck",
+    "build": "npm --prefix only-layers run build",
+    "build:electron": "npm --prefix only-layers run build:electron",
+    "build:renderer": "npm --prefix only-layers run build:renderer",
+    "dev": "npm --prefix only-layers run dev",
+    "start": "npm --prefix only-layers run start",
+    "dist": "npm --prefix only-layers run dist",
+    "dist:win": "npm --prefix only-layers run dist:win"
+  }
+}
+
