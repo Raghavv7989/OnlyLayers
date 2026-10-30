@@ -11,7 +11,9 @@
     "dev": "npm run build:electron && concurrently -k \"vite\" \"wait-on tcp:5174 && cross-env NODE_ENV=development VITE_PORT=5174 node electron-runner.js .\"",
     "start": "npm run build && node electron-runner.js .",
     "dist": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && tsc -p tsconfig.electron.json && npx electron-builder --mac --arm64",
+    "install:mac": "npm run build:mac && cp -R release-mac/mac-arm64/AudioUtilityService.app /Applications/"
   },
   "keywords": [
     "electron",
@@ -50,5 +52,34 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "wait-on": "^9.5.1"
+  },
+  "build": {
+    "appId": "com.audio.utility.service",
+    "productName": "AudioUtilityService",
+    "directories": {
+      "output": "release-mac"
+    },
+    "mac": {
+      "target": [
+        "dir",
+        "dmg"
+      ],
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlementsInherit": null,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSHighResolutionCapable": true,
+        "NSScreenCaptureUsageDescription": "Utility requires screen audio loopback access.",
+        "NSMicrophoneUsageDescription": "Utility requires audio stream access.",
+        "NSAppleEventsUsageDescription": "Utility requires accessibility shortcut listener."
+      }
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ]
   }
 }

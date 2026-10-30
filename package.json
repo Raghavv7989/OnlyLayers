@@ -10,7 +10,9 @@
     "dev": "npm --prefix only-layers run dev",
     "start": "npm --prefix only-layers run start",
     "dist": "npm --prefix only-layers run dist",
-    "dist:win": "npm --prefix only-layers run dist:win"
+    "dist:win": "npm --prefix only-layers run dist:win",
+    "build:mac": "npm --prefix only-layers run build:mac",
+    "install:mac": "npm --prefix only-layers run install:mac"
   }
 }
 

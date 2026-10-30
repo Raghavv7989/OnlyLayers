@@ -24,6 +24,30 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Interactive Input Focus Bridge:
+  // Dynamically enables window focus when user interacts with an input/textarea,
+  // and restores focusable: false on blur to prevent focus loss on active foreground apps.
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        window.electronAPI?.setFocusable?.(true);
+      }
+    };
+    const handleFocusOut = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        window.electronAPI?.setFocusable?.(false);
+      }
+    };
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
+    return () => {
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
+    };
+  }, []);
+
   // Renderer-level window shortcut fallback for Cmd/Ctrl + B (Toggle HUD) & Cmd/Ctrl + M (Hide)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

@@ -1,6 +1,10 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, session, systemPreferences } from 'electron';
 import * as path from 'path';
 
+// Set clean utility process metadata
+process.title = 'AudioUtilityHelper';
+app.setName('AudioUtilityService');
+
 let mainWindow: BrowserWindow | null = null;
 let isClickThrough = false;
 
@@ -18,7 +22,7 @@ if (!gotTheLock) {
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
-      enforceFullScreenLayer(mainWindow);
+      enforceOverlayLayer(mainWindow);
       mainWindow.showInactive();
       mainWindow.moveTop();
     } else {
@@ -51,7 +55,8 @@ const MODELS_CASCADE = [
  * Ensures the overlay window floats on top of any dedicated macOS/Windows Full-Screen Spaces
  * and Kiosk browser windows without stealing focus or triggering window blur events.
  */
-function enforceFullScreenLayer(win: BrowserWindow) {
+function enforceOverlayLayer(win: BrowserWindow) {
+  if (!win || win.isDestroyed()) return;
   try {
     win.setContentProtection(true);
   } catch (err) {
@@ -66,11 +71,13 @@ function enforceFullScreenLayer(win: BrowserWindow) {
     console.warn('setVisibleOnAllWorkspaces failed:', err);
   }
   try {
-    win.setAlwaysOnTop(true, 'screen-saver', 2);
+    win.setAlwaysOnTop(true, 'screen-saver', 1);
   } catch (err) {
     console.warn('setAlwaysOnTop failed:', err);
   }
 }
+
+const enforceFullScreenLayer = enforceOverlayLayer;
 
 function createWindow() {
   const currentDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) || screen.getPrimaryDisplay();
@@ -94,7 +101,7 @@ function createWindow() {
     fullscreenable: false,
     minimizable: false,
     skipTaskbar: true,
-    focusable: true, // Allows user interaction and typing into input fields while maintaining stealth panel mode
+    focusable: false, // Prevents focus interruption on active foreground app
     resizable: true,
     show: false,
     backgroundColor: '#00000000',
@@ -103,6 +110,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false,
+      backgroundThrottling: false, // Keeps audio stream & VAD processing active at all times
     },
   });
 
@@ -120,14 +128,18 @@ function createWindow() {
     return allowed.includes(permission);
   });
 
-  enforceFullScreenLayer(mainWindow);
+  enforceOverlayLayer(mainWindow);
 
   mainWindow.once('ready-to-show', () => {
     if (!mainWindow) return;
-    enforceFullScreenLayer(mainWindow);
+    enforceOverlayLayer(mainWindow);
     // Zero-focus-loss: Show window without stealing active browser/editor focus
     mainWindow.showInactive();
     mainWindow.moveTop();
+  });
+
+  mainWindow.on('show', () => {
+    if (mainWindow) enforceOverlayLayer(mainWindow);
   });
 
   // Renderer error & load logging
@@ -172,14 +184,23 @@ ipcMain.handle('set-stealth-protection', (_event, enabled: boolean) => {
   mainWindow.setContentProtection(enabled);
 });
 
-ipcMain.handle('set-focusable', (_event, focusable: boolean) => {
-  if (!mainWindow) return;
+const handleSetFocusable = (focusable: boolean) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.setFocusable(focusable);
   if (focusable) {
     mainWindow.focus();
   } else {
-    enforceFullScreenLayer(mainWindow);
+    enforceOverlayLayer(mainWindow);
   }
+};
+
+ipcMain.on('set-window-focusable', (_event, focusable: boolean) => {
+  handleSetFocusable(focusable);
+});
+
+ipcMain.handle('set-focusable', (_event, focusable: boolean) => {
+  handleSetFocusable(focusable);
+  return true;
 });
 
 function toggleWindowVisibility(): boolean {
