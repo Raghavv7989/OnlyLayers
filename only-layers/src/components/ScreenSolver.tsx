@@ -12,7 +12,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { solveScreenProblem } from '../services/geminiLive';
-import { getStoredResume } from '../services/resumeEngine';
+import { getCachedInterviewContext } from '../services/resumeEngine';
 
 export type SolverMode = 'universal' | 'leetcode' | 'debug' | 'system';
 
@@ -190,7 +190,7 @@ PERFORM THESE 4 STEPS IN EXACT ORDER:
 4. Detailed breakdown and trade-off analysis.`;
       }
 
-      const resumeContext = getStoredResume();
+      const resumeContext = getCachedInterviewContext();
       const result = await solveScreenProblem({
         base64Image: image,
         prompt,

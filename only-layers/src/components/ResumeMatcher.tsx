@@ -1,12 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, FileText, CheckCircle2, AlertCircle, Sparkles, RefreshCw, Copy, Check, BookOpen, Zap, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Upload,
+  FileText,
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  RefreshCw,
+  Copy,
+  Check,
+  BookOpen,
+  Zap,
+  Eye,
+  EyeOff,
+  Trash2,
+  FileUp,
+  Sliders,
+  Briefcase,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import {
   getStoredResume,
   setStoredResume,
   getStoredJD,
   setStoredJD,
-  getStoredNotes,
-  setStoredNotes,
+  getStoredCustomInstructions,
+  setStoredCustomInstructions,
   parseResumeFile,
   extractKeywordMatch,
   generateInterviewTalkingPoints,
@@ -19,15 +38,32 @@ import {
   hasGroqApiKey,
 } from '../services/groqEngine';
 
+const PRESET_INSTRUCTIONS = [
+  '⚡ Under 3 sentences',
+  '🎯 Staff Engineer framing',
+  '⭐ First-person STAR format',
+  '📊 Emphasize Metrics & Scale',
+  '🛠️ React & TypeScript focus',
+  '🐍 Python & FastAPI focus',
+  '🏗️ Deep System Design',
+  '🚫 No textbook definitions',
+];
+
 export const ResumeMatcher: React.FC = () => {
   const [resumeText, setResumeText] = useState('');
   const [jdText, setJdText] = useState('');
-  const [notesText, setNotesText] = useState('');
+  const [customInstructions, setCustomInstructionsState] = useState('');
   const [matchResult, setMatchResult] = useState<SkillMatchResult | null>(null);
   const [talkingPoints, setTalkingPoints] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // File drag & upload state
+  const [isDragging, setIsDragging] = useState(false);
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [showRawResume, setShowRawResume] = useState(true);
 
   // Groq Turbo Key State
   const [groqKey, setGroqKey] = useState(getStoredGroqApiKey());
@@ -36,19 +72,23 @@ export const ResumeMatcher: React.FC = () => {
   const [isTestingGroq, setIsTestingGroq] = useState(false);
   const [groqStatus, setGroqStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    // Ensure window is focusable so inputs accept keyboard events and paste
+    // Ensure window is focusable so textareas and inputs accept keyboard events and paste
     if (typeof window.electronAPI?.setFocusable === 'function') {
       window.electronAPI.setFocusable(true);
     }
 
     const savedResume = getStoredResume();
     const savedJD = getStoredJD();
-    const savedNotes = getStoredNotes();
+    const savedInstructions = getStoredCustomInstructions();
+
     setResumeText(savedResume);
     setJdText(savedJD);
-    setNotesText(savedNotes);
+    setCustomInstructionsState(savedInstructions);
     setHasGroqKey(hasGroqApiKey());
+
     if (savedResume && savedJD) {
       setMatchResult(extractKeywordMatch(savedResume, savedJD));
     }
@@ -90,11 +130,10 @@ export const ResumeMatcher: React.FC = () => {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processFile = async (file: File) => {
     setError(null);
+    setIsParsingFile(true);
+    setUploadedFileName(file.name);
     try {
       const parsed = await parseResumeFile(file);
       setResumeText(parsed);
@@ -104,6 +143,52 @@ export const ResumeMatcher: React.FC = () => {
       }
     } catch (err: unknown) {
       setError('Failed to parse file: ' + String(err));
+    } finally {
+      setIsParsingFile(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await processFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await processFile(file);
+    }
+  };
+
+  const handleResumeTextChange = (val: string) => {
+    setResumeText(val);
+    setStoredResume(val);
+    if (jdText) {
+      setMatchResult(extractKeywordMatch(val, jdText));
+    }
+  };
+
+  const handleClearResume = () => {
+    setResumeText('');
+    setStoredResume('');
+    setUploadedFileName(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (jdText) {
+      setMatchResult(extractKeywordMatch('', jdText));
     }
   };
 
@@ -115,9 +200,28 @@ export const ResumeMatcher: React.FC = () => {
     }
   };
 
-  const handleNotesChange = (val: string) => {
-    setNotesText(val);
-    setStoredNotes(val);
+  const handleClearJd = () => {
+    setJdText('');
+    setStoredJD('');
+    setMatchResult(null);
+  };
+
+  const handleInstructionsChange = (val: string) => {
+    setCustomInstructionsState(val);
+    setStoredCustomInstructions(val);
+  };
+
+  const handleTogglePresetInstruction = (preset: string) => {
+    let nextInstructions = customInstructions.trim();
+    if (nextInstructions.includes(preset)) {
+      nextInstructions = nextInstructions
+        .replace(preset, '')
+        .replace(/\n\n+/g, '\n')
+        .trim();
+    } else {
+      nextInstructions = nextInstructions ? `${nextInstructions}\n• ${preset}` : `• ${preset}`;
+    }
+    handleInstructionsChange(nextInstructions);
   };
 
   const handleGeneratePoints = async () => {
@@ -143,92 +247,224 @@ export const ResumeMatcher: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const totalGroundedChars = resumeText.length + jdText.length + customInstructions.length;
+
   return (
-    <div className="flex flex-col h-full space-y-2.5 overflow-y-auto pr-0.5">
-      {/* Upload & JD Input */}
-      <div className="grid grid-cols-2 gap-2 shrink-0">
-        {/* Resume Box */}
-        <div className="bg-black/30 p-2 rounded-lg border border-white/10 flex flex-col justify-between">
-          <div>
-            <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 mb-1 flex items-center justify-between">
-              <span className="flex items-center gap-1">
-                <FileText className="w-3 h-3 text-indigo-400" /> Resume Profile
-              </span>
-              <label className="cursor-pointer text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-0.5">
-                <Upload className="w-2.5 h-2.5" />
-                <span>Upload</span>
-                <input
-                  type="file"
-                  accept=".pdf,.txt,.md"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <textarea
-              value={resumeText}
-              onChange={(e) => {
-                setResumeText(e.target.value);
-                setStoredResume(e.target.value);
-                if (jdText) setMatchResult(extractKeywordMatch(e.target.value, jdText));
-              }}
-              placeholder="Paste or upload candidate resume (PDF/MD/TXT)..."
-              rows={2}
-              className="w-full bg-transparent text-[11px] text-slate-200 resize-none focus:outline-none placeholder-slate-600 font-mono"
-            />
+    <div className="flex flex-col h-full space-y-2.5 overflow-y-auto pr-1 select-text">
+      {/* Top Grounding Status Strip */}
+      <div className="flex items-center justify-between px-2.5 py-1.5 bg-black/40 rounded-xl border border-white/10 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="p-1 rounded-md bg-indigo-500/20 text-indigo-400">
+            <Sparkles className="w-3.5 h-3.5" />
           </div>
-          {resumeText && (
-            <div className="text-[9px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
-              <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>Resume cached ({resumeText.length} chars)</span>
+          <div>
+            <div className="text-xs font-semibold text-slate-200">Parakeet 2.0 Context Engine</div>
+            <div className="text-[10px] text-slate-400">
+              Grounds live answers in your resume projects, target JD, & custom preferences
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Job Description Box */}
-        <div className="bg-black/30 p-2 rounded-lg border border-white/10 flex flex-col justify-between">
-          <div>
-            <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 mb-1 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3 text-amber-400" /> Target Job (JD)
-            </div>
-            <textarea
-              value={jdText}
-              onChange={(e) => handleJdChange(e.target.value)}
-              placeholder="Paste target job description & requirements..."
-              rows={2}
-              className="w-full bg-transparent text-[11px] text-slate-200 resize-none focus:outline-none placeholder-slate-600 font-mono"
-            />
-          </div>
-          {jdText && (
-            <div className="text-[9px] text-indigo-300 font-mono flex items-center gap-1 mt-0.5">
-              <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>JD cached ({jdText.length} chars)</span>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300">
+            🧠 RAM Grounded: <strong className="text-emerald-400">{totalGroundedChars}</strong> chars
+          </span>
         </div>
       </div>
 
-      {/* Custom Cheat Sheet & Key Facts Box */}
-      <div className="bg-black/30 p-2 rounded-lg border border-white/10 shrink-0">
-        <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 mb-1 flex items-center justify-between">
-          <span className="flex items-center gap-1">
-            <BookOpen className="w-3 h-3 text-emerald-400" /> Custom Cheat-Sheet & System Notes
-          </span>
-          <span className="text-[9px] text-slate-500 font-mono">Instant RAM Grounding</span>
+      {/* Resume Dropzone & Text Input Card */}
+      <div className="bg-black/30 p-2.5 rounded-xl border border-white/10 shrink-0 space-y-2">
+        <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+          <div className="flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Candidate Resume (PDF, TXT, MD)</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {resumeText && (
+              <button
+                type="button"
+                onClick={handleClearResume}
+                className="text-[10px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors"
+                title="Clear resume"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowRawResume(!showRawResume)}
+              className="text-[10px] text-indigo-300 hover:text-indigo-200 flex items-center gap-0.5 transition-colors"
+            >
+              <span>{showRawResume ? 'Collapse Editor' : 'Edit Raw Text'}</span>
+              {showRawResume ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          </div>
         </div>
-        <textarea
-          value={notesText}
-          onChange={(e) => handleNotesChange(e.target.value)}
-          placeholder="Add custom talking points, system design metrics, or personal achievements to auto-inject into every live answer..."
-          rows={2}
-          className="w-full bg-transparent text-[11px] text-slate-200 resize-none focus:outline-none placeholder-slate-600 font-mono"
-        />
-        {notesText && (
-          <div className="text-[9px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
-            <CheckCircle2 className="w-2.5 h-2.5" />
-            <span>Notes cached ({notesText.length} chars)</span>
+
+        {/* Drag & Drop File Zone */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-all ${
+            isDragging
+              ? 'border-indigo-400 bg-indigo-950/30'
+              : 'border-white/10 hover:border-indigo-500/50 bg-black/20 hover:bg-black/40'
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.txt,.md"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+
+          <div className="flex flex-col items-center justify-center gap-1">
+            {isParsingFile ? (
+              <div className="flex items-center gap-2 text-indigo-400 text-xs py-1">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Parsing resume text via native extractor...</span>
+              </div>
+            ) : (
+              <>
+                <FileUp className="w-5 h-5 text-indigo-400" />
+                <div className="text-xs text-slate-300">
+                  <span className="font-semibold text-indigo-300">Drop your Resume (.PDF, .TXT)</span> or click to browse
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">
+                  Extracted locally into RAM cache • Never sent to any third party
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Status Pill & Raw Textarea */}
+        {showRawResume && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono px-0.5">
+              <span>
+                {uploadedFileName ? `Source: ${uploadedFileName}` : 'Raw Resume Text / Direct Paste'}
+              </span>
+              <span>{resumeText.length} characters</span>
+            </div>
+            <textarea
+              value={resumeText}
+              onChange={(e) => handleResumeTextChange(e.target.value)}
+              onFocus={() => window.electronAPI?.setFocusable?.(true)}
+              onClick={() => window.electronAPI?.setFocusable?.(true)}
+              placeholder="Paste or edit extracted resume text here (projects, achievements, skills, work history)..."
+              rows={3}
+              className="w-full bg-black/50 text-[11px] text-slate-200 p-2 rounded-lg border border-white/10 resize-y focus:outline-none focus:border-indigo-500 placeholder-slate-600 font-mono leading-relaxed"
+            />
           </div>
         )}
+      </div>
+
+      {/* Target Job Description & Custom Instructions Grid */}
+      <div className="grid grid-cols-2 gap-2 shrink-0">
+        {/* Target Job Description Box */}
+        <div className="bg-black/30 p-2.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+            <div className="flex items-center gap-1.5">
+              <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+              <span>Target Role & Job Spec (JD)</span>
+            </div>
+            {jdText && (
+              <button
+                type="button"
+                onClick={handleClearJd}
+                className="text-[10px] text-slate-400 hover:text-rose-400 flex items-center gap-0.5 transition-colors"
+                title="Clear JD"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+                <span>Clear</span>
+              </button>
+            )}
+          </div>
+
+          <textarea
+            value={jdText}
+            onChange={(e) => handleJdChange(e.target.value)}
+            onFocus={() => window.electronAPI?.setFocusable?.(true)}
+            onClick={() => window.electronAPI?.setFocusable?.(true)}
+            placeholder="Paste target job description, required tech stack, responsibilities, & role seniority..."
+            rows={3}
+            className="w-full bg-black/50 text-[11px] text-slate-200 p-2 rounded-lg border border-white/10 resize-y focus:outline-none focus:border-amber-500 placeholder-slate-600 font-mono leading-relaxed"
+          />
+
+          <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
+            <span>Aligns terminology with role</span>
+            <span className="text-amber-400/90">{jdText.length} chars</span>
+          </div>
+        </div>
+
+        {/* Custom Instructions & Behavioral Rules Box */}
+        <div className="bg-black/30 p-2.5 rounded-xl border border-white/10 flex flex-col justify-between space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+            <div className="flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Custom Behavioral Rules</span>
+            </div>
+            {customInstructions && (
+              <button
+                type="button"
+                onClick={() => handleInstructionsChange('')}
+                className="text-[10px] text-slate-400 hover:text-rose-400 flex items-center gap-0.5 transition-colors"
+                title="Clear instructions"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+                <span>Clear</span>
+              </button>
+            )}
+          </div>
+
+          <textarea
+            value={customInstructions}
+            onChange={(e) => handleInstructionsChange(e.target.value)}
+            onFocus={() => window.electronAPI?.setFocusable?.(true)}
+            onClick={() => window.electronAPI?.setFocusable?.(true)}
+            placeholder="e.g. Keep spoken hook under 2 sentences. Always emphasize latency and cost reduction metrics. Sound confident..."
+            rows={3}
+            className="w-full bg-black/50 text-[11px] text-slate-200 p-2 rounded-lg border border-white/10 resize-y focus:outline-none focus:border-emerald-500 placeholder-slate-600 font-mono leading-relaxed"
+          />
+
+          <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
+            <span>Direct LLM system prompt rule</span>
+            <span className="text-emerald-400/90">{customInstructions.length} chars</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Preset Custom Instruction Chips */}
+      <div className="bg-black/20 p-2 rounded-xl border border-white/5 shrink-0 space-y-1.5">
+        <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+          <Sparkles className="w-3 h-3 text-indigo-400" />
+          <span>Quick Instruction Presets (Click to append / toggle):</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {PRESET_INSTRUCTIONS.map((preset) => {
+            const isActive = customInstructions.includes(preset);
+            return (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => handleTogglePresetInstruction(preset)}
+                className={`text-[10px] px-2 py-0.5 rounded-md font-mono transition-all border ${
+                  isActive
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                    : 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10'
+                }`}
+              >
+                {preset}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Groq Cloud & Gemini Engine Configuration */}
@@ -253,16 +489,8 @@ export const ResumeMatcher: React.FC = () => {
                 localStorage.setItem('groq_api_key', val);
                 setHasGroqKey(Boolean(val && val.startsWith('gsk_') && val.length > 20));
               }}
-              onFocus={() => {
-                if (typeof window.electronAPI?.setFocusable === 'function') {
-                  window.electronAPI.setFocusable(true);
-                }
-              }}
-              onClick={() => {
-                if (typeof window.electronAPI?.setFocusable === 'function') {
-                  window.electronAPI.setFocusable(true);
-                }
-              }}
+              onFocus={() => window.electronAPI?.setFocusable?.(true)}
+              onClick={() => window.electronAPI?.setFocusable?.(true)}
               placeholder="Enter Groq API Key (gsk_...)"
               className="w-full bg-black/40 border border-white/10 rounded px-2.5 py-1.5 pr-8 text-xs text-white placeholder-slate-600 font-mono focus:outline-none focus:border-amber-500 select-text"
             />
@@ -293,8 +521,18 @@ export const ResumeMatcher: React.FC = () => {
           </button>
         </div>
         {groqStatus && (
-          <div className={`text-[10px] p-1.5 rounded flex items-center gap-1 ${groqStatus.ok ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20' : 'bg-rose-500/15 text-rose-300 border border-rose-500/20'}`}>
-            {groqStatus.ok ? <Check className="w-3 h-3 text-emerald-400" /> : <AlertCircle className="w-3 h-3 text-rose-400" />}
+          <div
+            className={`text-[10px] p-1.5 rounded flex items-center gap-1 ${
+              groqStatus.ok
+                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20'
+                : 'bg-rose-500/15 text-rose-300 border border-rose-500/20'
+            }`}
+          >
+            {groqStatus.ok ? (
+              <Check className="w-3 h-3 text-emerald-400" />
+            ) : (
+              <AlertCircle className="w-3 h-3 text-rose-400" />
+            )}
             <span>{groqStatus.msg}</span>
           </div>
         )}

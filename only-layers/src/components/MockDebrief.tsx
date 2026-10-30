@@ -18,7 +18,7 @@ import {
   streamQuickAnswer,
   PRIMARY_MODEL,
 } from '../services/geminiLive';
-import { getStoredResume } from '../services/resumeEngine';
+import { getCachedInterviewContext } from '../services/resumeEngine';
 import { TranscriptSegment } from '../services/audioPipeline';
 
 interface MockDebriefProps {
@@ -65,7 +65,7 @@ export const MockDebrief: React.FC<MockDebriefProps> = ({ transcriptSegments = [
               .join('\n')
           : 'Candidate and interviewer discussed scaling a distributed key-value store with raft consensus and handling partition tolerance.';
 
-      const resumeContext = getStoredResume();
+      const resumeContext = getCachedInterviewContext();
       const output = await generateInterviewDebrief(fullTranscript, resumeContext);
       setDebriefOutput(output);
     } catch (err: unknown) {

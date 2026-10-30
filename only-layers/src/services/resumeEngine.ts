@@ -1,19 +1,22 @@
 import { getGenAIClient, PRIMARY_MODEL } from './geminiLive';
 
-const RESUME_STORAGE_KEY = 'only_layers_resume_text';
-const JD_STORAGE_KEY = 'only_layers_jd_text';
-const NOTES_STORAGE_KEY = 'only_layers_cheat_sheet_notes';
+export const RESUME_STORAGE_KEY = 'only_layers_resume_text';
+export const JD_STORAGE_KEY = 'only_layers_job_description';
+export const LEGACY_JD_STORAGE_KEY = 'only_layers_jd_text';
+export const CUSTOM_INSTRUCTIONS_KEY = 'only_layers_custom_instructions';
+export const LEGACY_NOTES_STORAGE_KEY = 'only_layers_cheat_sheet_notes';
 
 // High-speed In-Memory Cache for 0ms context grounding
 let memoryResume: string = '';
 let memoryJD: string = '';
-let memoryNotes: string = '';
+let memoryCustomInstructions: string = '';
 
 // Preload cache from localStorage on module initialization
 try {
   memoryResume = localStorage.getItem(RESUME_STORAGE_KEY) || '';
-  memoryJD = localStorage.getItem(JD_STORAGE_KEY) || '';
-  memoryNotes = localStorage.getItem(NOTES_STORAGE_KEY) || '';
+  memoryJD = localStorage.getItem(JD_STORAGE_KEY) || localStorage.getItem(LEGACY_JD_STORAGE_KEY) || '';
+  memoryCustomInstructions =
+    localStorage.getItem(CUSTOM_INSTRUCTIONS_KEY) || localStorage.getItem(LEGACY_NOTES_STORAGE_KEY) || '';
 } catch (e) {
   console.warn('Failed to initialize in-memory resume cache:', e);
 }
@@ -36,51 +39,125 @@ export function setStoredResume(text: string): void {
 export function getStoredJD(): string {
   if (memoryJD) return memoryJD;
   try {
-    memoryJD = localStorage.getItem(JD_STORAGE_KEY) || '';
+    memoryJD = localStorage.getItem(JD_STORAGE_KEY) || localStorage.getItem(LEGACY_JD_STORAGE_KEY) || '';
   } catch {}
   return memoryJD;
 }
+
+export const getStoredJobDescription = getStoredJD;
 
 export function setStoredJD(text: string): void {
   memoryJD = text;
   try {
     localStorage.setItem(JD_STORAGE_KEY, text);
+    localStorage.setItem(LEGACY_JD_STORAGE_KEY, text);
   } catch {}
 }
 
-export function getStoredNotes(): string {
-  if (memoryNotes) return memoryNotes;
+export const setStoredJobDescription = setStoredJD;
+
+export function getStoredCustomInstructions(): string {
+  if (memoryCustomInstructions) return memoryCustomInstructions;
   try {
-    memoryNotes = localStorage.getItem(NOTES_STORAGE_KEY) || '';
+    memoryCustomInstructions =
+      localStorage.getItem(CUSTOM_INSTRUCTIONS_KEY) || localStorage.getItem(LEGACY_NOTES_STORAGE_KEY) || '';
   } catch {}
-  return memoryNotes;
+  return memoryCustomInstructions;
 }
 
-export function setStoredNotes(text: string): void {
-  memoryNotes = text;
+export function setStoredCustomInstructions(text: string): void {
+  memoryCustomInstructions = text;
   try {
-    localStorage.setItem(NOTES_STORAGE_KEY, text);
+    localStorage.setItem(CUSTOM_INSTRUCTIONS_KEY, text);
+    localStorage.setItem(LEGACY_NOTES_STORAGE_KEY, text);
   } catch {}
+}
+
+// Backwards-compatibility aliases for legacy cheat sheet notes
+export const getStoredNotes = getStoredCustomInstructions;
+export const setStoredNotes = setStoredCustomInstructions;
+
+export const BASE_PARAKEET_PERSONA = `You are Parakeet AI 2.0, an elite real-time Staff/Principal Software Engineer & Executive Interview Copilot.
+The candidate is in a live interview right now and will read your response out loud immediately.
+
+CRITICAL QUALITY RULES:
+1. NEVER give generic textbook fluff or vague 1-line summaries. Give concrete, senior-level, production-grade answers that make the candidate sound like a top 1% engineer.
+2. Automatically weave in the candidate's Resume, Projects, and Tech Stack context whenever relevant.
+3. Structure EVERY response in this exact scannable layout so the candidate can start speaking within 1 second:
+
+🗣️ SAY THIS FIRST (VERBATIM SPOKEN HOOK)
+"[Write a natural, confident, 2-to-3 sentence first-person spoken answer that directly answers the core question with high technical precision. Ground it immediately in candidate's real resume experience (e.g. 'In my work at [Company] building [Project]...'). The candidate will read this out loud word-for-word.]"
+
+⚡ CORE TECHNICAL BREAKDOWN & TALKING POINTS
+• **[Mechanism / Internal Architecture]**: Explain the exact internal mechanics, lifecycle, memory model, or protocol flow with specific technical terms.
+• **[Production Application & Metrics]**: Tie it to real-world engineering (e.g., latency reduction, concurrency handling, scalability, or a project from the candidate's resume).
+• **[Trade-offs & Edge Cases]**: State when to use it vs. alternatives, bottlenecks, and how to mitigate failure modes.
+
+💻 CODE / COMPLEXITY / ARCHITECTURE SNIPPET (Include if technical/coding/system design; omit ONLY for pure HR questions)
+\`\`\`[language]
+// Clean, concise, production-ready code example, query, or architecture flow (8-15 lines max)
+\`\`\`
+Complexity / Key Metric: Time: O(...) | Space: O(...) (or System SLA / Throughput metric)
+
+🎯 LIKELY FOLLOW-UP & 1-LINE COUNTER
+• If they ask: "[Most probable follow-up question]" → Say: "[Sharp 1-sentence counter-answer]"`;
+
+export const PARAKEET_SYSTEM_INSTRUCTION = BASE_PARAKEET_PERSONA;
+
+/**
+ * Dynamically builds a fully grounded system instruction prompt for Parakeet 2.0
+ * Injects candidate resume profile, target job description, and custom instructions
+ */
+export function buildGroundedParakeetSystemPrompt(customResumeOverride?: string): string {
+  const resume = (customResumeOverride !== undefined ? customResumeOverride : getStoredResume()).trim();
+  const jd = getStoredJD().trim();
+  const instructions = getStoredCustomInstructions().trim();
+
+  const groundingBlocks: string[] = [];
+
+  if (resume) {
+    groundingBlocks.push(`--- CANDIDATE RESUME & PROFILE (GROUND EVERY ANSWER IN THESE REAL EXPERIENCES) ---
+${resume.slice(0, 5000)}
+CRITICAL: Whenever relevant, frame your answers using the candidate's actual projects, companies, tech stack, and achievements described above.`);
+  }
+
+  if (jd) {
+    groundingBlocks.push(`--- TARGET JOB DESCRIPTION & ROLE REQUIREMENTS ---
+${jd.slice(0, 3500)}
+CRITICAL: Align technical depth, terminology, and prioritized concepts with this target role's expectations.`);
+  }
+
+  if (instructions) {
+    groundingBlocks.push(`--- USER CUSTOM INSTRUCTIONS & PREFERENCES ---
+${instructions.slice(0, 2500)}
+CRITICAL: Strictly adhere to these candidate-defined behavioral rules, framing preferences, and constraints at all times.`);
+  }
+
+  if (groundingBlocks.length === 0) {
+    return BASE_PARAKEET_PERSONA;
+  }
+
+  return `${BASE_PARAKEET_PERSONA}\n\n${groundingBlocks.join('\n\n')}`;
 }
 
 /**
  * Returns formatted candidate context instantaneously from RAM.
- * Injected into every Gemini prompt for Parakeet-speed grounded answers.
+ * Injected into every Gemini / Groq prompt for Parakeet-speed grounded answers.
  */
 export function getCachedInterviewContext(): string {
   const parts: string[] = [];
   const resume = getStoredResume().trim();
   const jd = getStoredJD().trim();
-  const notes = getStoredNotes().trim();
+  const instructions = getStoredCustomInstructions().trim();
 
   if (resume) {
-    parts.push(`Candidate Resume Profile:\n${resume.slice(0, 3500)}`);
+    parts.push(`Candidate Resume Profile:\n${resume.slice(0, 4000)}`);
   }
   if (jd) {
-    parts.push(`Target Job Spec:\n${jd.slice(0, 2500)}`);
+    parts.push(`Target Job Spec:\n${jd.slice(0, 3000)}`);
   }
-  if (notes) {
-    parts.push(`Personal Notes & Cheat Sheet:\n${notes.slice(0, 1500)}`);
+  if (instructions) {
+    parts.push(`User Custom Instructions & Preferences:\n${instructions.slice(0, 2000)}`);
   }
 
   return parts.join('\n\n');

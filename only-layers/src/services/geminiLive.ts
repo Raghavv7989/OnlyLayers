@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import type { Part } from '@google/genai';
-import { getCachedInterviewContext } from './resumeEngine';
+import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA } from './resumeEngine';
 
 const API_KEY_STORAGE_KEY = 'only_layers_gemini_api_key';
 
@@ -56,30 +56,7 @@ export function getGenAIClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
-export const PARAKEET_SYSTEM_INSTRUCTION = `You are Parakeet AI Pro, an elite real-time Staff Software Engineer & Executive Interview Copilot.
-The candidate is in a live interview right now and will read your response out loud immediately.
-
-CRITICAL QUALITY RULES:
-1. NEVER give generic textbook fluff or vague 1-line summaries. Give concrete, senior-level, production-grade answers that make the candidate sound like a top 1% engineer.
-2. Automatically weave in the candidate's Resume, Projects, and Tech Stack context whenever relevant.
-3. Structure EVERY response in this exact scannable layout so the candidate can start speaking within 1 second:
-
-🗣️ SAY THIS FIRST (VERBATIM SPOKEN HOOK)
-"[Write a natural, confident, 2-to-3 sentence first-person spoken answer that directly answers the core question with high technical precision. The candidate will read this out loud word-for-word.]"
-
-⚡ CORE TECHNICAL BREAKDOWN & TALKING POINTS
-• **[Mechanism / How It Works Under the Hood]**: Explain the exact internal architecture, lifecycle, memory model, or protocol flow with specific technical terms.
-• **[Production Application / Metrics]**: Tie it to real-world engineering (e.g., latency reduction, concurrency handling, scalability, or a project from the candidate's resume).
-• **[Trade-offs & Edge Cases]**: State when to use it vs. alternatives, bottlenecks, and how to mitigate failure modes.
-
-💻 CODE / COMPLEXITY / ARCHITECTURE SNIPPET (Include if technical/coding/system design; omit only for pure HR questions)
-\`\`\`[language]
-// Clean, concise, production-ready code example, query, or architecture flow (8-15 lines max)
-\`\`\`
-Complexity / Key Metric: Time: O(...) | Space: O(...) (or System SLA / Throughput metric)
-
-🎯 LIKELY FOLLOW-UP & 1-LINE COUNTER
-• If they ask: "[Most probable follow-up question]" → Say: "[Sharp 1-sentence counter-answer]"`;
+export const PARAKEET_SYSTEM_INSTRUCTION = BASE_PARAKEET_PERSONA;
 
 export interface ConversationTurn {
   role: 'user' | 'model';
@@ -116,10 +93,7 @@ export async function streamQuickAnswer({
   }
 
   // Pre-load grounded context into persistent system instruction
-  const cachedContext = resumeContext || getCachedInterviewContext();
-  const effectiveSystemPrompt = `${systemPrompt || PARAKEET_SYSTEM_INSTRUCTION}${
-    cachedContext.trim() ? `\n\n[Candidate Resume, Target Job & Notes Grounding]:\n${cachedContext}` : ''
-  }`;
+  const effectiveSystemPrompt = systemPrompt || buildGroundedParakeetSystemPrompt(resumeContext);
 
   // Multi-Turn Conversation Memory Construction
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -915,10 +889,7 @@ export async function solveAudioQuestion({
     throw new Error('Gemini API key is missing. Please enter your API key in Settings.');
   }
 
-  const cachedContext = resumeContext || getCachedInterviewContext();
-  const effectiveSystemPrompt = `${PARAKEET_SYSTEM_INSTRUCTION}${
-    cachedContext.trim() ? `\n\n[Candidate Resume, Target Job & Notes Grounding]:\n${cachedContext}` : ''
-  }`;
+  const effectiveSystemPrompt = buildGroundedParakeetSystemPrompt(resumeContext);
 
   const rawBase64 = audioBase64 && audioBase64.includes(',') ? audioBase64.split(',')[1] : (audioBase64 || '');
   const cleanBase64 = rawBase64.trim();
@@ -929,7 +900,7 @@ export async function solveAudioQuestion({
       prompt: interimTranscript.trim(),
       conversationHistory,
       systemPrompt: effectiveSystemPrompt,
-      resumeContext: cachedContext,
+      resumeContext,
       onChunk: onChunk || (() => {}),
     });
   }

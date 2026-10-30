@@ -16,7 +16,7 @@ import {
   transcribeAudioClip,
   streamQuickAnswer,
 } from './geminiLive';
-import { getStoredResume } from './resumeEngine';
+import { getStoredResume, getCachedInterviewContext } from './resumeEngine';
 import {
   hasGroqApiKey,
   transcribeAudioWithGroqWhisper,
@@ -771,7 +771,7 @@ export class AudioPipelineEngine {
 
     let completedAnswer = '';
     let hasReceivedFirstAnswerToken = false;
-    const resumeContext = getStoredResume();
+    const resumeContext = getCachedInterviewContext();
 
     try {
       this.notifyStatus('processing', '⚡ Streaming Parakeet 2.0 Answer (Zero Latency)...');

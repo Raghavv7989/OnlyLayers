@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Volume2, Sparkles, RefreshCw, Copy, Check, Radio } from 'lucide-react';
 import { streamQuickAnswer, solveAudioQuestion } from '../services/geminiLive';
-import { getStoredResume } from '../services/resumeEngine';
+import { getCachedInterviewContext } from '../services/resumeEngine';
 import { semanticGuard } from '../services/semanticGuard';
 
 export const AudioLoopback: React.FC = () => {
@@ -204,7 +204,7 @@ export const AudioLoopback: React.FC = () => {
     semanticGuard.setGeneratingAnswer();
 
     try {
-      const resume = getStoredResume();
+      const resume = getCachedInterviewContext();
 
       // If we have microphone audio recording, pass audio directly to Gemini
       if (hasAudioRecorded && audioChunksRef.current.some((c) => c.size > 0)) {

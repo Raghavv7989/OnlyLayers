@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Send, Sparkles, Copy, Check, Zap, RefreshCw } from 'lucide-react';
 import { streamQuickAnswer } from '../services/geminiLive';
-import { getStoredResume } from '../services/resumeEngine';
+import { getCachedInterviewContext } from '../services/resumeEngine';
 
 export const QuickCopilot: React.FC = () => {
   const [prompt, setPrompt] = useState('');
@@ -26,7 +26,7 @@ export const QuickCopilot: React.FC = () => {
     setOutput('');
 
     try {
-      const resume = getStoredResume();
+      const resume = getCachedInterviewContext();
       await streamQuickAnswer({
         prompt: textToQuery,
         resumeContext: resume,

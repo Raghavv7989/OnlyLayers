@@ -6,7 +6,7 @@
  * Total End-to-End Latency: < 0.8 seconds
  */
 
-import { getCachedInterviewContext } from './resumeEngine';
+import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA } from './resumeEngine';
 import { streamQuickAnswer, type ConversationTurn } from './geminiLive';
 
 export const GROQ_API_KEY_STORAGE_KEY = 'only_layers_groq_api_key';
@@ -27,30 +27,7 @@ export function hasGroqApiKey(): boolean {
   return Boolean(key && key.startsWith('gsk_') && key.length > 20);
 }
 
-export const GROQ_PARAKEET_SYSTEM_INSTRUCTION = `You are Parakeet AI Pro, an elite real-time Staff Software Engineer & Executive Interview Copilot.
-The candidate is in a live interview right now and will read your response out loud immediately.
-
-CRITICAL QUALITY RULES:
-1. NEVER give generic textbook fluff or vague 1-line summaries. Give concrete, senior-level, production-grade answers that make the candidate sound like a top 1% engineer.
-2. Automatically weave in the candidate's Resume, Projects, and Tech Stack context whenever relevant.
-3. Structure EVERY response in this exact scannable layout so the candidate can start speaking within 1 second:
-
-🗣️ SAY THIS FIRST (VERBATIM SPOKEN HOOK)
-"[Write a natural, confident, 2-to-3 sentence first-person spoken answer that directly answers the core question with high technical precision. The candidate will read this out loud word-for-word.]"
-
-⚡ CORE TECHNICAL BREAKDOWN & TALKING POINTS
-• **[Mechanism / How It Works Under the Hood]**: Explain the exact internal architecture, lifecycle, memory model, or protocol flow with specific technical terms.
-• **[Production Application / Metrics]**: Tie it to real-world engineering (e.g., latency reduction, concurrency handling, scalability, or a project from the candidate's resume).
-• **[Trade-offs & Edge Cases]**: State when to use it vs. alternatives, bottlenecks, and how to mitigate failure modes.
-
-💻 CODE / COMPLEXITY / ARCHITECTURE SNIPPET (Include if technical/coding/system design; omit only for pure HR questions)
-\`\`\`[language]
-// Clean, concise, production-ready code example, query, or architecture flow (8-15 lines max)
-\`\`\`
-Complexity / Key Metric: Time: O(...) | Space: O(...) (or System SLA / Throughput metric)
-
-🎯 LIKELY FOLLOW-UP & 1-LINE COUNTER
-• If they ask: "[Most probable follow-up question]" → Say: "[Sharp 1-sentence counter-answer]"`;
+export const GROQ_PARAKEET_SYSTEM_INSTRUCTION = BASE_PARAKEET_PERSONA;
 
 export interface GroqConversationTurn {
   role: 'user' | 'assistant';
@@ -142,10 +119,7 @@ export async function streamGroqAnswer({
     throw new Error('Groq API Key is not configured.');
   }
 
-  const effectiveContext = resumeContext || getCachedInterviewContext();
-  const systemPrompt = `${GROQ_PARAKEET_SYSTEM_INSTRUCTION}${
-    effectiveContext.trim() ? `\n\n[Candidate Resume Grounding]:\n${effectiveContext}` : ''
-  }`;
+  const systemPrompt = buildGroundedParakeetSystemPrompt(resumeContext);
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt },
