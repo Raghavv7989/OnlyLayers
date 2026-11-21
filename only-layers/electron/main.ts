@@ -129,10 +129,20 @@ function createWindow() {
   });
 
   // Strict System-Only Audio Loopback via ScreenCaptureKit (AirPods & Speaker safe, zero mic)
+  let cachedScreenSource: Electron.DesktopCapturerSource | null = null;
+  screen.on('display-added', () => { cachedScreenSource = null; });
+  screen.on('display-removed', () => { cachedScreenSource = null; });
+  screen.on('display-metrics-changed', () => { cachedScreenSource = null; });
+
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
+      if (cachedScreenSource) {
+        callback({ video: cachedScreenSource, audio: 'loopback' });
+        return;
+      }
       const sources = await desktopCapturer.getSources({ types: ['screen'] });
       if (sources && sources.length > 0) {
+        cachedScreenSource = sources[0];
         callback({ video: sources[0], audio: 'loopback' });
       } else {
         console.warn('[Main] setDisplayMediaRequestHandler: No screen sources found');

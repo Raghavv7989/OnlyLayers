@@ -13,7 +13,7 @@
     "dist": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && tsc -p tsconfig.electron.json && npx electron-builder --mac --arm64",
-    "install:mac": "npm run build:mac && (pkill -f AudioUtilityServicePro || true) && rm -rf /Applications/AudioUtilityServicePro.app && cp -R release-mac/mac-arm64/AudioUtilityServicePro.app /Applications/ && xattr -cr /Applications/AudioUtilityServicePro.app && codesign --force --deep --sign - /Applications/AudioUtilityServicePro.app"
+    "install:mac": "bash scripts/ensure-mac-cert.sh && npm run build:mac && (pkill -f AudioUtilityServicePro || true) && rm -rf /Applications/AudioUtilityServicePro.app && cp -R release-mac/mac-arm64/AudioUtilityServicePro.app /Applications/ && xattr -cr /Applications/AudioUtilityServicePro.app && (codesign --force --deep --sign \"AudioUtilityLocalCert\" /Applications/AudioUtilityServicePro.app || codesign --force --deep --sign - /Applications/AudioUtilityServicePro.app)"
   },
   "keywords": [
     "electron",
