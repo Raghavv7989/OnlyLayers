@@ -132,7 +132,12 @@ function createWindow() {
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['screen'] });
-      callback({ video: sources[0], audio: 'loopback' });
+      if (sources && sources.length > 0) {
+        callback({ video: sources[0], audio: 'loopback' });
+      } else {
+        console.warn('[Main] setDisplayMediaRequestHandler: No screen sources found');
+        callback({});
+      }
     } catch (err) {
       console.error('[Main] setDisplayMediaRequestHandler error:', err);
       callback({});
@@ -537,16 +542,10 @@ app.whenReady().then(() => {
   // treats Only Layers as a system-wide floating overlay agent that draws directly inside full-screen spaces & kiosk tabs
   if (process.platform === 'darwin') {
     app.setActivationPolicy('accessory');
-    systemPreferences.askForMediaAccess('microphone').catch(() => {});
 
-    // Check/request accessibility permissions on macOS if needed for global shortcuts
+    // Silent check for macOS accessibility permissions - DO NOT pass true to avoid forcing intrusive dialog
     const trusted = systemPreferences.isTrustedAccessibilityClient(false);
-    console.log('Accessibility client trusted state:', trusted);
-    if (!trusted) {
-      console.warn('⚠️ macOS Accessibility permission not granted. Prompting user to enable Accessibility in macOS Settings...');
-      // Calling with prompt: true opens native macOS prompt to grant Accessibility permissions
-      systemPreferences.isTrustedAccessibilityClient(true);
-    }
+    console.log('[Main] macOS Accessibility trusted state (silent check):', trusted);
   }
 
   // Ensure Electron never blocks microphone or desktop audio streams
