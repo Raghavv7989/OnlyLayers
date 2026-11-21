@@ -82,8 +82,8 @@ export interface AudioPipelineCallbacks {
 const SAMPLE_RATE = 16000;
 const TARGET_WAV_SAMPLE_RATE = 8000;   // 8kHz 16-bit Mono WAV downsampling (half byte size, <35ms upload)
 const FRAME_SIZE = 1024;               // 1024 samples = ~64ms per frame at 16kHz for ultra-snappy response
-const SILENCE_DURATION_MS = 700;       // 700ms snappy silence trigger: fires answer immediately when question ends
-const MIN_SPEECH_DURATION_MS = 800;    // Minimum 800ms spoken speech to discard short noise spikes/clicks
+const SILENCE_DURATION_MS = 550;       // 550ms ultra-snappy silence trigger: fires answer immediately when question ends
+const MIN_SPEECH_DURATION_MS = 700;    // Minimum 700ms spoken speech to discard short noise spikes/clicks
 const MIN_PEAK_RMS_THRESHOLD = 0.018;  // Clean RMS energy threshold for speech gating
 const MAX_UTTERANCE_CAP_MS = 25000;    // 25-second max utterance cap for long in-depth interview questions
 const COOLDOWN_MS = 250;               // 250ms ultra-fast debounce between questions

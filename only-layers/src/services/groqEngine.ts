@@ -6,9 +6,11 @@
  * Total End-to-End Latency: < 0.8 seconds
  */
 
-import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA } from './resumeEngine';
+import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA, STRICT_RESUME_GROUNDED_PROMPT } from './resumeEngine';
 import { getStoredDetectedProjects, getStoredResumeDossier } from './resumeAnalyzer';
 import { streamQuickAnswer, type ConversationTurn } from './geminiLive';
+
+export { STRICT_RESUME_GROUNDED_PROMPT };
 
 export const GROQ_API_KEY_STORAGE_KEY = 'only_layers_groq_api_key';
 
@@ -137,9 +139,9 @@ export async function streamGroqAnswer({
   const detectedProjects = getStoredDetectedProjects();
   let userPayload = question;
   if (detectedProjects.length > 0) {
-    userPayload = `[Interviewer Question]: ${question}\n[Directive]: Answer in natural first-person conversational English as the candidate. Ground strictly in Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations. No robotic bullet dumps.`;
+    userPayload = `[Interviewer Question]: ${question}\n[Directive]: 2-3 short spoken sentences max (under 55 words total). Hit the answer directly in sentence 1. Casual-confident human English with natural contractions. Ground strictly in Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero AI clichés.`;
   } else if (getStoredResumeDossier() || localStorage.getItem('only_layers_resume_text')) {
-    userPayload = `[Interviewer Question]: ${question}\n[Directive]: Answer in natural first-person conversational English as the candidate grounded in Candidate Dossier. Zero hallucinations. No robotic bullet dumps.`;
+    userPayload = `[Interviewer Question]: ${question}\n[Directive]: 2-3 short spoken sentences max (under 55 words total). Hit the answer directly in sentence 1. Casual-confident human English with natural contractions. Ground strictly in Candidate Dossier. Zero AI clichés.`;
   }
 
   // Append the current question
@@ -166,8 +168,8 @@ export async function streamGroqAnswer({
         },
         body: JSON.stringify({
           model,
-          temperature: 0.4,
-          max_tokens: 350,
+          temperature: 0.3,
+          max_tokens: 150,
           stream: true,
           messages,
         }),

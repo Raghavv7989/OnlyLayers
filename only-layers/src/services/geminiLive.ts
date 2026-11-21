@@ -1,7 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 import type { Part } from '@google/genai';
-import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA } from './resumeEngine';
+import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA, STRICT_RESUME_GROUNDED_PROMPT } from './resumeEngine';
 import { getStoredDetectedProjects, getStoredResumeDossier } from './resumeAnalyzer';
+
+export { STRICT_RESUME_GROUNDED_PROMPT };
 
 const API_KEY_STORAGE_KEY = 'only_layers_gemini_api_key';
 
@@ -109,9 +111,9 @@ export async function streamQuickAnswer({
   const detectedProjects = getStoredDetectedProjects();
   let userPayload = prompt;
   if (detectedProjects.length > 0) {
-    userPayload = `[Interviewer Question]: ${prompt}\n[Directive]: Answer in natural first-person conversational English as the candidate. Ground strictly in Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations. No robotic bullet dumps.`;
+    userPayload = `[Interviewer Question]: ${prompt}\n[Directive]: 2-3 short spoken sentences max (under 55 words total). Hit the answer directly in sentence 1. Casual-confident human English with natural contractions. Ground strictly in Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero AI clichés.`;
   } else if (getStoredResumeDossier() || localStorage.getItem('only_layers_resume_text')) {
-    userPayload = `[Interviewer Question]: ${prompt}\n[Directive]: Answer in natural first-person conversational English as the candidate grounded in Candidate Dossier. Zero hallucinations. No robotic bullet dumps.`;
+    userPayload = `[Interviewer Question]: ${prompt}\n[Directive]: 2-3 short spoken sentences max (under 55 words total). Hit the answer directly in sentence 1. Casual-confident human English with natural contractions. Ground strictly in Candidate Dossier. Zero AI clichés.`;
   }
 
   contents.push({ role: 'user', parts: [{ text: userPayload }] });
@@ -134,7 +136,8 @@ export async function streamQuickAnswer({
           config: {
             systemInstruction: effectiveSystemPrompt,
             ...(model.includes('lite') ? {} : { thinkingConfig: { thinkingBudget: 0 } }),
-            temperature: 0.15,
+            temperature: 0.3,
+            maxOutputTokens: 150,
           },
         });
 
@@ -157,7 +160,7 @@ export async function streamQuickAnswer({
         }
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
-        // If thinkingConfig is unsupported or throws INVALID_ARGUMENT, retry immediately with temperature 0.1
+        // If thinkingConfig is unsupported or throws INVALID_ARGUMENT, retry immediately with temperature 0.3
         if (msg.includes('INVALID_ARGUMENT') || msg.includes('thinking')) {
           try {
             const fallbackStream = await ai.models.generateContentStream({
@@ -165,7 +168,8 @@ export async function streamQuickAnswer({
               contents,
               config: {
                 systemInstruction: effectiveSystemPrompt,
-                temperature: 0.15,
+                temperature: 0.3,
+                maxOutputTokens: 150,
               },
             });
 
@@ -209,7 +213,7 @@ export async function streamQuickAnswer({
         model: PRIMARY_MODEL,
         modelsCascade: FLASH_CASCADE,
         thinkingBudget: 0,
-        temperature: 0.1,
+        temperature: 0.3,
       });
 
       if (signal?.aborted) {

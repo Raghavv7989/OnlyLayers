@@ -64,7 +64,7 @@ const TeleprompterAnswerView: React.FC<{ rawText: string; isLocked?: boolean }> 
 
   // Check if text contains Parakeet section markers (Natural Spoken Script or legacy tags)
   const hasSaySection = /🗣️\s*SAY THIS/i.test(rawText);
-  const hasCuesSection = /⚡\s*(?:QUICK CUES|CORE TECHNICAL|TECHNICAL DETAILS)/i.test(rawText);
+  const hasCuesSection = /⚡\s*(?:QUICK CUES|CORE TECHNICAL|TECHNICAL DETAILS|CUES)/i.test(rawText);
 
   if (!hasSaySection && !hasCuesSection) {
     return (
@@ -86,8 +86,8 @@ const TeleprompterAnswerView: React.FC<{ rawText: string; isLocked?: boolean }> 
   }
 
   // Parse sections
-  const sayMatch = rawText.match(/🗣️\s*SAY THIS[^\n]*\n([\s\S]*?)(?=(?:⚡\s*(?:QUICK CUES|CORE TECHNICAL|TECHNICAL DETAILS)|💻\s*CODE|🎯\s*LIKELY|$))/i);
-  const cuesMatch = rawText.match(/⚡\s*(?:QUICK CUES(?: \(GLANCE ONLY\))?|CORE TECHNICAL BREAKDOWN|TECHNICAL DETAILS(?: \(FROM YOUR RESUME\))?)[^\n]*\n([\s\S]*?)(?=(?:💻\s*CODE|🎯\s*LIKELY|$))/i);
+  const sayMatch = rawText.match(/🗣️\s*SAY THIS[^\n]*\n([\s\S]*?)(?=(?:⚡\s*(?:QUICK CUES|CORE TECHNICAL|TECHNICAL DETAILS|CUES)|💻\s*CODE|🎯\s*LIKELY|$))/i);
+  const cuesMatch = rawText.match(/⚡\s*(?:QUICK CUES(?: \(GLANCE ONLY\))?|CORE TECHNICAL BREAKDOWN|TECHNICAL DETAILS(?: \(FROM YOUR RESUME\))?|CUES(?: \([^)]+\))?)[^\n]*\n([\s\S]*?)(?=(?:💻\s*CODE|🎯\s*LIKELY|$))/i);
   const codeMatch = rawText.match(/💻\s*CODE\s*\/\s*COMPLEXITY[^\n]*\n([\s\S]*?)(?=(?:🎯\s*LIKELY|$))/i);
   const followMatch = rawText.match(/🎯\s*LIKELY FOLLOW-UP[^\n]*\n([\s\S]*)$/i);
 
@@ -1041,10 +1041,10 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
                       <div className="flex flex-col items-center justify-center h-full py-6 text-slate-500 text-center space-y-1 select-none">
                         <Zap className="w-5 h-5 text-slate-600" />
                         <p className="text-xs font-sans">
-                          Answers stream token-by-token automatically upon 700ms silence pause.
+                          Answers stream token-by-token automatically upon 550ms silence pause.
                         </p>
                         <p className="text-[10px] font-mono text-slate-600">
-                          Structured as: 🗣️ SAY THIS FIRST • ⚡ CORE TECHNICAL BREAKDOWN • 💻 CODE • 🎯 LIKELY FOLLOW-UP
+                          Structured as: 🗣️ SAY THIS (2–3 spoken sentences) • ⚡ CUES (resume & trade-offs)
                         </p>
                       </div>
                     )
