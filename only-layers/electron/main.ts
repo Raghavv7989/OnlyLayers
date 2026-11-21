@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, session, systemPreferences } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, session, systemPreferences, clipboard } from 'electron';
 import * as path from 'path';
 
 // Set clean utility process metadata
@@ -182,6 +182,14 @@ ipcMain.handle('set-opacity', (_event, opacity: number) => {
 ipcMain.handle('set-stealth-protection', (_event, enabled: boolean) => {
   if (!mainWindow) return;
   mainWindow.setContentProtection(enabled);
+});
+
+ipcMain.handle('copy-to-clipboard', (_event, text: string) => {
+  if (typeof text === 'string' && text.length > 0) {
+    clipboard.writeText(text);
+    return true;
+  }
+  return false;
 });
 
 const handleSetFocusable = (focusable: boolean) => {

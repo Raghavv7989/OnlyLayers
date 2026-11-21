@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setIgnoreMouseEvents: (ignore: boolean) => ipcRenderer.invoke('set-ignore-mouse-events', ignore),
   setOpacity: (opacity: number) => ipcRenderer.invoke('set-opacity', opacity),
   setStealthProtection: (enabled: boolean) => ipcRenderer.invoke('set-stealth-protection', enabled),
+  copyToClipboard: (text: string) => ipcRenderer.invoke('copy-to-clipboard', text),
   setFocusable: (focusable: boolean) => {
     ipcRenderer.send('set-window-focusable', focusable);
     return ipcRenderer.invoke('set-focusable', focusable);

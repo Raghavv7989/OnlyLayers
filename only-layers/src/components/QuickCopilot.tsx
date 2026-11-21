@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Send, Sparkles, Copy, Check, Zap, RefreshCw } from 'lucide-react';
 import { streamQuickAnswer } from '../services/geminiLive';
 import { getCachedInterviewContext } from '../services/resumeEngine';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 export const QuickCopilot: React.FC = () => {
   const [prompt, setPrompt] = useState('');
@@ -42,11 +43,13 @@ export const QuickCopilot: React.FC = () => {
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!output) return;
-    navigator.clipboard.writeText(output);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(output);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (

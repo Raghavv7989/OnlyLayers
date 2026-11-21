@@ -37,6 +37,7 @@ import {
   testGroqKey,
   hasGroqApiKey,
 } from '../services/groqEngine';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 const PRESET_INSTRUCTIONS = [
   '⚡ Under 3 sentences',
@@ -240,11 +241,13 @@ export const ResumeMatcher: React.FC = () => {
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!talkingPoints) return;
-    navigator.clipboard.writeText(talkingPoints);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(talkingPoints);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const totalGroundedChars = resumeText.length + jdText.length + customInstructions.length;

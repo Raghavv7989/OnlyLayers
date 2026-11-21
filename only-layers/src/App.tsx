@@ -48,6 +48,31 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  // Support native clipboard copy on selected text (Cmd/Ctrl + C & copy events)
+  // Bypasses Chromium document-focus lock when HUD is in non-activating panel mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+        const selection = window.getSelection()?.toString();
+        if (selection && selection.length > 0) {
+          window.electronAPI?.copyToClipboard?.(selection);
+        }
+      }
+    };
+    const handleCopyEvent = (e: ClipboardEvent) => {
+      const selection = window.getSelection()?.toString();
+      if (selection && selection.length > 0) {
+        window.electronAPI?.copyToClipboard?.(selection);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('copy', handleCopyEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('copy', handleCopyEvent);
+    };
+  }, []);
+
   // Renderer-level window shortcut fallback for Cmd/Ctrl + B (Toggle HUD) & Cmd/Ctrl + M (Hide)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

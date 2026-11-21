@@ -18,6 +18,7 @@ export interface ElectronAPI {
   setIgnoreMouseEvents: (ignore: boolean) => Promise<void>;
   setOpacity: (opacity: number) => Promise<void>;
   setStealthProtection: (enabled: boolean) => Promise<void>;
+  copyToClipboard?: (text: string) => Promise<boolean>;
   setFocusable: (focusable: boolean) => Promise<void>;
   toggleWindowVisibility: () => Promise<boolean>;
   toggleHud?: () => Promise<boolean>;

@@ -8,9 +8,26 @@
   body {
     background-color: transparent !important;
     overflow: hidden;
-    user-select: none;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: #f1f5f9;
+  }
+
+  ::selection {
+    background: rgba(99, 102, 241, 0.45);
+    color: #ffffff;
+  }
+
+  /* Force selectable text across all HUD content layers, code boxes & transcripts */
+  .select-text,
+  .select-text *,
+  pre,
+  code,
+  textarea,
+  input,
+  p,
+  .selectable {
+    -webkit-user-select: text !important;
+    user-select: text !important;
   }
 }
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Volume2, Mic, Clock, Trash2, Copy, Check, Radio, Zap, Shield } from 'lucide-react';
 import { SpeakerType, TranscriptSegment } from '../services/audioPipeline';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 export interface TranscriptTickerProps {
   segments: TranscriptSegment[];
@@ -40,14 +41,16 @@ export const TranscriptTicker: React.FC<TranscriptTickerProps> = ({
     scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [cleanSegments, interimText, activeSpeaker]);
 
-  const handleCopyTranscript = () => {
+  const handleCopyTranscript = async () => {
     if (cleanSegments.length === 0) return;
     const text = cleanSegments
       .map((s) => `[${s.speaker} - ${s.timestamp}]: ${s.text}`)
       .join('\n');
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (

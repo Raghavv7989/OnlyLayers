@@ -22,6 +22,7 @@ import { ScreenSolver } from './ScreenSolver';
 import { AudioLoopback } from './AudioLoopback';
 import { ResumeMatcher } from './ResumeMatcher';
 import { MockDebrief } from './MockDebrief';
+import { copyTextToClipboard } from '../utils/clipboard';
 import {
   audioPipeline,
   TranscriptSegment,
@@ -94,10 +95,12 @@ const TeleprompterAnswerView: React.FC<{ rawText: string }> = ({ rawText }) => {
     }
   }
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+  const handleCopyCode = async (code: string) => {
+    const ok = await copyTextToClipboard(code);
+    if (ok) {
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
   };
 
   return (
@@ -535,11 +538,13 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
     }
   };
 
-  const handleCopyAnswer = () => {
+  const handleCopyAnswer = async () => {
     if (!streamingAnswer) return;
-    navigator.clipboard.writeText(streamingAnswer);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(streamingAnswer);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleClearTranscript = () => {

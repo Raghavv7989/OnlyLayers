@@ -28,6 +28,7 @@ import {
   CodingTurn,
 } from '../services/geminiLive';
 import { getCachedInterviewContext } from '../services/resumeEngine';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 export type SolverCategory = 'mcq' | 'coding';
 export type McqSubMode = 'universal' | 'leetcode' | 'debug' | 'system';
@@ -111,6 +112,55 @@ function parseVerdict(text: string): ParsedVerdict {
 }
 
 /**
+ * Strictly extracts ONLY the raw runnable source code from the model output.
+ * Strips all markdown wrappers, language tags, headings, comments outside code, and explanations.
+ */
+export function extractStrictCode(text: string): string {
+  if (!text) return '';
+
+  // 1. Look for code block under PRODUCTION CODE header first
+  const sectionMatch = text.match(/###\s*(?:💻|⚡)?\s*(?:OPTIMAL|COMPLETE)?\s*PRODUCTION\s*CODE[\s\S]*?```(?:[a-zA-Z0-9_-]*)\r?\n([\s\S]*?)(?:```|$)/i);
+  if (sectionMatch && sectionMatch[1].trim()) {
+    return cleanRawCode(sectionMatch[1]);
+  }
+
+  // 2. Look for all fenced code blocks and select the longest one
+  const codeBlockRegex = /```(?:[a-zA-Z0-9_-]*)\r?\n([\s\S]*?)(?:```|$)/g;
+  let match: RegExpExecArray | null;
+  let longestCode = '';
+
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    const candidate = match[1].trim();
+    if (candidate.length > longestCode.length) {
+      longestCode = candidate;
+    }
+  }
+
+  if (longestCode) {
+    return cleanRawCode(longestCode);
+  }
+
+  // 3. Fallback: unclosed code block during streaming
+  const unclosedMatch = text.match(/```(?:[a-zA-Z0-9_-]*)\r?\n([\s\S]*)$/);
+  if (unclosedMatch && unclosedMatch[1].trim()) {
+    return cleanRawCode(unclosedMatch[1]);
+  }
+
+  return cleanRawCode(text);
+}
+
+function cleanRawCode(code: string): string {
+  if (!code) return '';
+  let cleaned = code.trim();
+  cleaned = cleaned.replace(/^```[a-zA-Z0-9_-]*\r?\n/, '');
+  cleaned = cleaned.replace(/\r?\n```$/, '');
+  cleaned = cleaned.replace(/<CODING_VERDICT>[\s\S]*?<\/CODING_VERDICT>/gi, '').trim();
+  cleaned = cleaned.replace(/<VERIFIED_VERDICT>[\s\S]*?<\/VERIFIED_VERDICT>/gi, '').trim();
+  cleaned = cleaned.replace(/^###\s+.*$/gm, '').trim();
+  return cleaned;
+}
+
+/**
  * Extracts structured coding verdict & clean code block from Coding model output.
  */
 function parseCodingVerdict(text: string): ParsedCodingVerdict {
@@ -140,13 +190,7 @@ function parseCodingVerdict(text: string): ParsedCodingVerdict {
     }
   }
 
-  // Extract primary code block
-  let codeBlock: string | undefined;
-  const codeMatch = text.match(/```(?:[a-zA-Z0-9_-]*)\n([\s\S]*?)```/);
-  if (codeMatch) {
-    codeBlock = codeMatch[1].trim();
-  }
-
+  const codeBlock = extractStrictCode(text);
   let bodyText = text.replace(/<CODING_VERDICT>[\s\S]*?(?:<\/CODING_VERDICT>|$)/i, '').trim();
 
   return {
@@ -155,7 +199,7 @@ function parseCodingVerdict(text: string): ParsedCodingVerdict {
     timeComplexity,
     spaceComplexity,
     language,
-    codeBlock,
+    codeBlock: codeBlock || undefined,
     bodyText,
   };
 }
@@ -439,25 +483,32 @@ PERFORM THESE 4 STEPS IN EXACT ORDER:
     }
   };
 
-  const handleCopyFull = (text: string) => {
+  const handleCopyFull = async (text: string) => {
     if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopiedFull(true);
-    setTimeout(() => setCopiedFull(false), 2000);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
+      setCopiedFull(true);
+      setTimeout(() => setCopiedFull(false), 2000);
+    }
   };
 
-  const handleCopyPick = (pickText: string) => {
+  const handleCopyPick = async (pickText: string) => {
     if (!pickText) return;
-    navigator.clipboard.writeText(pickText);
-    setCopiedPick(true);
-    setTimeout(() => setCopiedPick(false), 2000);
+    const ok = await copyTextToClipboard(pickText);
+    if (ok) {
+      setCopiedPick(true);
+      setTimeout(() => setCopiedPick(false), 2000);
+    }
   };
 
-  const handleCopyCodeSnippet = (codeText: string) => {
-    if (!codeText) return;
-    navigator.clipboard.writeText(codeText);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+  const handleCopyCodeSnippet = async (rawCodeOrText: string) => {
+    const cleanCode = extractStrictCode(rawCodeOrText);
+    if (!cleanCode) return;
+    const ok = await copyTextToClipboard(cleanCode);
+    if (ok) {
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
   };
 
   return (
@@ -831,16 +882,14 @@ PERFORM THESE 4 STEPS IN EXACT ORDER:
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  {parsedCodingVerdict.codeBlock && (
-                    <button
-                      onClick={() => handleCopyCodeSnippet(parsedCodingVerdict.codeBlock || '')}
-                      className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-mono font-semibold flex items-center gap-1 transition-colors shadow-sm shadow-emerald-600/30"
-                      title="Copy complete solution code to clipboard"
-                    >
-                      {copiedCode ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleCopyCodeSnippet(codingSolution)}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-mono font-semibold flex items-center gap-1 transition-colors shadow-sm shadow-emerald-600/30"
+                    title="Copy strict raw runnable code to clipboard (no markdown, no explanations)"
+                  >
+                    {copiedCode ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedCode ? 'Copied Clean Code' : 'Copy Code'}</span>
+                  </button>
                   <button
                     onClick={() => handleCopyFull(codingSolution)}
                     className="p-1 bg-white/10 hover:bg-white/20 text-slate-300 rounded transition-colors"
@@ -929,10 +978,33 @@ PERFORM THESE 4 STEPS IN EXACT ORDER:
 
         {/* Content Display: Coding Mode */}
         {solverCategory === 'coding' && codingSolution && (
-          <div>
-            <div className="whitespace-pre-wrap">
+          <div className="space-y-3">
+            {parsedCodingVerdict.codeBlock && (
+              <div className="bg-black/60 border border-emerald-500/30 rounded-xl overflow-hidden shadow-lg">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-950/40 border-b border-emerald-500/20 text-[10px] font-mono text-emerald-300">
+                  <div className="flex items-center gap-1.5">
+                    <FileCode className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="font-semibold">Runnable Solution Code ({codingLanguage})</span>
+                  </div>
+                  <button
+                    onClick={() => handleCopyCodeSnippet(codingSolution)}
+                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-mono font-semibold flex items-center gap-1 transition-colors"
+                    title="Copy strictly clean raw runnable code"
+                  >
+                    {copiedCode ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
+                  </button>
+                </div>
+                <pre className="p-3 font-mono text-[11px] text-emerald-200 overflow-x-auto leading-relaxed select-text">
+                  <code>{parsedCodingVerdict.codeBlock}</code>
+                </pre>
+              </div>
+            )}
+
+            <div className="whitespace-pre-wrap select-text text-slate-300 leading-relaxed">
               {parsedCodingVerdict.hasVerdict ? (parsedCodingVerdict.bodyText || codingSolution) : codingSolution}
             </div>
+
             {!parsedCodingVerdict.hasVerdict && (
               <button
                 onClick={() => handleCopyFull(codingSolution)}

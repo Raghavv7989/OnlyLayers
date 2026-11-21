@@ -3,6 +3,7 @@ import { Mic, MicOff, Volume2, Sparkles, RefreshCw, Copy, Check, Radio } from 'l
 import { streamQuickAnswer, solveAudioQuestion } from '../services/geminiLive';
 import { getCachedInterviewContext } from '../services/resumeEngine';
 import { semanticGuard } from '../services/semanticGuard';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 export const AudioLoopback: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
@@ -252,11 +253,13 @@ Provide a high-scoring, precise technical interview answer with structured bulle
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!answer) return;
-    navigator.clipboard.writeText(answer);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(answer);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (

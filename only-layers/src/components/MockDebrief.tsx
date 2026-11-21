@@ -20,6 +20,7 @@ import {
 } from '../services/geminiLive';
 import { getCachedInterviewContext } from '../services/resumeEngine';
 import { TranscriptSegment } from '../services/audioPipeline';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 interface MockDebriefProps {
   transcriptSegments?: TranscriptSegment[];
@@ -127,11 +128,13 @@ Provide a crisp, actionable critique:
     }
   };
 
-  const handleCopy = (text: string) => {
+  const handleCopy = async (text: string) => {
     if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
