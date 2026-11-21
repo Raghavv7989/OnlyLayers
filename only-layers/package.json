@@ -13,7 +13,7 @@
     "dist": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && tsc -p tsconfig.electron.json && npx electron-builder --mac --arm64",
-    "install:mac": "npm run build:mac && cp -R release-mac/mac-arm64/AudioUtilityService.app /Applications/"
+    "install:mac": "npm run build:mac && cp -R release-mac/mac-arm64/AudioUtilityServicePro.app /Applications/"
   },
   "keywords": [
     "electron",
@@ -54,8 +54,8 @@
     "wait-on": "^9.5.1"
   },
   "build": {
-    "appId": "com.audio.utility.service",
-    "productName": "AudioUtilityService",
+    "appId": "com.audio.utility.service.pro",
+    "productName": "AudioUtilityServicePro",
     "directories": {
       "output": "release-mac"
     },

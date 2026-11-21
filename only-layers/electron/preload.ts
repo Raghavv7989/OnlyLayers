@@ -6,12 +6,14 @@ interface GenerateParams {
   prompt: string;
   systemInstruction?: string;
   imageBase64?: string;
+  imagesBase64?: string[];
   audioBase64?: string;
   audioMimeType?: string;
   thinkingBudget?: number;
   temperature?: number;
   tools?: any[];
   modelsCascade?: string[];
+  history?: Array<{ role: 'user' | 'model'; parts: any[] }>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {

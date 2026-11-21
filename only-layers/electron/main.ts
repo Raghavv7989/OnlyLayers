@@ -2,8 +2,8 @@ import { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, screen, s
 import * as path from 'path';
 
 // Set clean utility process metadata
-process.title = 'AudioUtilityHelper';
-app.setName('AudioUtilityService');
+process.title = 'AudioUtilityHelperPro';
+app.setName('AudioUtilityServicePro');
 
 let mainWindow: BrowserWindow | null = null;
 let isClickThrough = false;
@@ -355,16 +355,18 @@ interface GenerateParams {
   prompt: string;
   systemInstruction?: string;
   imageBase64?: string;
+  imagesBase64?: string[];
   audioBase64?: string;
   audioMimeType?: string;
   thinkingBudget?: number;
   temperature?: number;
   tools?: any[];
   modelsCascade?: string[];
+  history?: Array<{ role: 'user' | 'model'; parts: any[] }>;
 }
 
 ipcMain.handle('gemini-generate', async (_event, params: GenerateParams) => {
-  const { apiKey, prompt, systemInstruction, imageBase64, audioBase64, audioMimeType, thinkingBudget, temperature, tools, modelsCascade } = params;
+  const { apiKey, prompt, systemInstruction, imageBase64, imagesBase64, audioBase64, audioMimeType, thinkingBudget, temperature, tools, modelsCascade, history } = params;
   if (!apiKey) {
     return { ok: false, error: 'Missing Gemini API key. Please configure in Settings.' };
   }
@@ -379,9 +381,17 @@ ipcMain.handle('gemini-generate', async (_event, params: GenerateParams) => {
     }
     parts.push({ text: prompt });
 
-    if (imageBase64) {
-      const isPng = imageBase64.startsWith('data:image/png');
-      const data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+    const imagesList: string[] = [];
+    if (imagesBase64 && Array.isArray(imagesBase64) && imagesBase64.length > 0) {
+      imagesList.push(...imagesBase64);
+    } else if (imageBase64) {
+      imagesList.push(imageBase64);
+    }
+
+    for (const img of imagesList) {
+      if (!img) continue;
+      const isPng = img.startsWith('data:image/png');
+      const data = img.includes(',') ? img.split(',')[1] : img;
       if (data && data.trim().length > 0) {
         parts.push({
           inlineData: {
@@ -407,6 +417,14 @@ ipcMain.handle('gemini-generate', async (_event, params: GenerateParams) => {
       }
     }
 
+    const contents: any[] = [];
+    if (history && Array.isArray(history) && history.length > 0) {
+      for (const turn of history) {
+        contents.push(turn);
+      }
+    }
+    contents.push({ role: 'user', parts });
+
     const defaultCascade = params.model?.includes('flash') ? FLASH_CASCADE : MODELS_CASCADE;
     const effectiveCascade = modelsCascade && modelsCascade.length > 0 ? modelsCascade : defaultCascade;
     const rawCascade = params.model ? [params.model, ...effectiveCascade] : effectiveCascade;
@@ -427,7 +445,7 @@ ipcMain.handle('gemini-generate', async (_event, params: GenerateParams) => {
       try {
         const response = await ai.models.generateContent({
           model: m,
-          contents: [{ role: 'user', parts }],
+          contents,
           config,
         });
         if (response && response.text) {
@@ -451,7 +469,7 @@ ipcMain.handle('gemini-generate', async (_event, params: GenerateParams) => {
             }
             const fallbackNoTools = await ai.models.generateContent({
               model: m,
-              contents: [{ role: 'user', parts }],
+              contents,
               config: noToolsConfig,
             });
             if (fallbackNoTools && fallbackNoTools.text) {
@@ -468,7 +486,7 @@ ipcMain.handle('gemini-generate', async (_event, params: GenerateParams) => {
             console.log(`[Gemini Main] Retrying model ${m} without thinkingConfig...`);
             const fallbackResponse = await ai.models.generateContent({
               model: m,
-              contents: [{ role: 'user', parts }],
+              contents,
               config: { temperature: temperature !== undefined ? temperature : 0.1 },
             });
             if (fallbackResponse && fallbackResponse.text) {

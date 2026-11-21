@@ -1005,13 +1005,213 @@ PERFORM THESE 4 STEPS IN EXACT ORDER:
 export const VERIFIED_REASONING_SYSTEM_PROMPT = SOLVE_FIRST_REASONING_SYSTEM_PROMPT;
 export const UNIVERSAL_REASONING_SYSTEM_PROMPT = SOLVE_FIRST_REASONING_SYSTEM_PROMPT;
 
+export const CODING_SOLVER_SYSTEM_PROMPT = `You are Parakeet Pro Coding Copilot, an elite Staff/Principal Software Engineer and Competitive Programmer.
+Your goal is to solve coding challenges, algorithmic problems (LeetCode, HackerRank, CodeSignal, CoderPad), and technical case studies with 100% correctness and optimal complexity.
+
+CRITICAL INSTRUCTIONS:
+1. SYNTHESIZE ALL SCREENSHOTS:
+   - The user may provide multiple screenshots (e.g. Screenshot 1 = Problem & Constraints, Screenshot 2 = Code Editor, Screenshot 3 = Test Failure / Error Trace).
+   - Accurately parse the exact inputs, outputs, constraints (e.g., N <= 10^5, negative numbers), and edge cases from all attached images.
+
+2. STATEFUL ERROR DEBUGGING & ITERATION:
+   - If previous code or error trace / failed test case is present:
+     • Identify the exact root cause of failure (off-by-one, TLE, recursion overflow, edge case).
+     • Explain the bug in 1-2 punchy sentences under ### 🐛 Root Cause & Fix.
+     • Output the revised complete solution.
+
+3. REQUIRED OUTPUT FORMAT:
+
+<CODING_VERDICT>
+⚡ OPTIMAL APPROACH: [Algorithm Name & Technique, e.g. "Two Pointers + Greedy", "Prefix Sums + Hash Map"]
+⏱️ TIME COMPLEXITY: O(...) — [1-sentence justification]
+💾 SPACE COMPLEXITY: O(...) — [1-sentence justification]
+🏷️ LANGUAGE: [Specified Language, e.g. Python 3, Java, C++, TypeScript, Go]
+</CODING_VERDICT>
+
+### 💻 COMPLETE PRODUCTION CODE
+\`\`\`[language]
+// Complete, clean, runnable code with comments on non-trivial lines
+\`\`\`
+
+### 🔍 KEY EDGE CASES & CONSTRAINTS AUDITED
+• **[Edge Case 1]**: e.g., Empty input / N=1 -> Handled at line X.
+• **[Edge Case 2]**: e.g., Negative integers / integer overflow -> Handled via (...).
+• **[Complexity Check]**: e.g., 10^5 elements -> O(N) execution takes < 0.2s within standard 1.0s limit.
+
+### 🧪 DRY RUN ON PRIMARY EXAMPLE
+- Step-by-step trace showing variable states on sample input.
+`;
+
+export interface CodingTurn {
+  role: 'user' | 'assistant';
+  content: string;
+  images?: string[];
+  timestamp?: string;
+}
+
+export interface SolveMultiScreenCodingOptions {
+  imagesBase64: string[];
+  prompt?: string;
+  language?: string;
+  errorTrace?: string;
+  history?: CodingTurn[];
+  resumeContext?: string;
+  onChunk?: (chunkText: string) => void;
+  thinkingBudget?: number;
+  temperature?: number;
+}
+
+export async function solveMultiScreenCodingProblem({
+  imagesBase64,
+  prompt,
+  language = 'Python 3',
+  errorTrace,
+  history = [],
+  resumeContext,
+  onChunk,
+  thinkingBudget = 4096,
+  temperature = 0.0,
+}: SolveMultiScreenCodingOptions): Promise<string> {
+  const apiKey = getStoredApiKey();
+  if (!apiKey) {
+    throw new Error('Gemini API key is missing. Please open Settings (gear icon) and enter your key.');
+  }
+
+  const candidateContext = resumeContext || getCachedInterviewContext();
+  const effectiveSystemPrompt = `${CODING_SOLVER_SYSTEM_PROMPT}${
+    candidateContext ? `\n\n[Candidate Context Grounding]:\n${candidateContext}` : ''
+  }`;
+
+  let promptBuilder = prompt && prompt.trim().length > 0
+    ? prompt.trim()
+    : `Please analyze the problem in the attached screenshots and formulate the optimal, bug-free solution in ${language}.`;
+
+  if (errorTrace && errorTrace.trim().length > 0) {
+    promptBuilder += `\n\n### 🛑 FAILED TEST CASE / RUNTIME ERROR TO DEBUG:\n\`\`\`\n${errorTrace.trim()}\n\`\`\`\nPlease pinpoint why this error occurred and provide the fully corrected code.`;
+  }
+
+  // Format history for Gemini IPC
+  const formattedHistory: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
+  if (history && history.length > 0) {
+    for (const turn of history.slice(-6)) {
+      formattedHistory.push({
+        role: turn.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: turn.content }],
+      });
+    }
+  }
+
+  // 1. Primary: Use Electron Main Process Native Network Stack
+  if (window.electronAPI?.geminiGenerate) {
+    const result = await window.electronAPI.geminiGenerate({
+      apiKey,
+      prompt: promptBuilder,
+      systemInstruction: effectiveSystemPrompt,
+      imagesBase64,
+      history: formattedHistory.length > 0 ? formattedHistory : undefined,
+      model: REASONING_CASCADE[0],
+      modelsCascade: REASONING_CASCADE,
+      thinkingBudget,
+      temperature,
+      tools: [{ googleSearch: {} }],
+    });
+
+    if (result.ok && result.text) {
+      const fullText = result.text;
+      if (onChunk) {
+        const step = Math.max(20, Math.floor(fullText.length / 25));
+        for (let i = step; i < fullText.length + step; i += step) {
+          onChunk(fullText.slice(0, i));
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        onChunk(fullText);
+      }
+      return fullText;
+    }
+    throw new Error(result.error || 'Failed to solve coding challenge.');
+  }
+
+  // 2. Fallback: Direct GenAI Client
+  let lastError: unknown = null;
+  try {
+    const ai = getGenAIClient();
+    for (const model of REASONING_CASCADE) {
+      const parts: Part[] = [{ text: promptBuilder }];
+      for (const img of imagesBase64) {
+        const isJpeg = img.startsWith('data:image/jpeg') || !img.startsWith('data:image/png');
+        const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+        const raw = img.includes(',') ? img.split(',')[1] : img;
+        if (raw && raw.trim().length > 0) {
+          parts.push({
+            inlineData: {
+              mimeType,
+              data: raw.trim(),
+            },
+          });
+        }
+      }
+
+      const contents: any[] = [];
+      if (formattedHistory.length > 0) {
+        contents.push(...formattedHistory);
+      }
+      contents.push({ role: 'user', parts });
+
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: effectiveSystemPrompt,
+            temperature,
+            thinkingConfig: { thinkingBudget },
+            tools: [{ googleSearch: {} }],
+          },
+        });
+        if (response && response.text) {
+          const text = response.text;
+          if (onChunk) onChunk(text);
+          return text;
+        }
+      } catch (err: unknown) {
+        console.warn(`Coding solver error on ${model}, retrying without tools:`, err);
+        try {
+          const fallbackRes = await ai.models.generateContent({
+            model,
+            contents,
+            config: {
+              systemInstruction: effectiveSystemPrompt,
+              temperature,
+              thinkingConfig: { thinkingBudget },
+            },
+          });
+          if (fallbackRes && fallbackRes.text) {
+            const text = fallbackRes.text;
+            if (onChunk) onChunk(text);
+            return text;
+          }
+        } catch (retryErr: unknown) {
+          lastError = retryErr;
+        }
+      }
+    }
+  } catch (initErr: unknown) {
+    lastError = initErr;
+  }
+
+  const errorMsg = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Failed to generate code solution: ${errorMsg}`);
+}
+
 export interface SolveScreenProblemOptions {
-  base64Image: string;
+  base64Image?: string;
+  imagesBase64?: string[];
   prompt?: string;
   resumeContext?: string;
   onChunk?: (chunkText: string) => void;
   thinkingBudget?: number;
   temperature?: number;
+  history?: Array<{ role: 'user' | 'model'; parts: any[] }>;
 }
 
 /**
@@ -1019,12 +1219,14 @@ export interface SolveScreenProblemOptions {
  * Solves Quantitative Aptitude, Logical Reasoning, Non-Verbal Matrices, MCQs, or LeetCode/DSA with 100% verification.
  */
 export async function solveScreenProblem({
-  base64Image,
+  base64Image = '',
+  imagesBase64,
   prompt,
   resumeContext,
   onChunk,
   thinkingBudget = 4096,
   temperature = 0.0,
+  history,
 }: SolveScreenProblemOptions): Promise<string> {
   const apiKey = getStoredApiKey();
   if (!apiKey) {
@@ -1040,9 +1242,10 @@ export async function solveScreenProblem({
     ? prompt.trim()
     : 'Carefully examine the screen and solve this question using the Solve-First Chain-of-Thought Protocol. Output strictly following the specified 4 steps and <VERIFIED_VERDICT> format.';
 
-  const isJpeg = base64Image.startsWith('data:image/jpeg') || !base64Image.startsWith('data:image/png');
+  const primaryImg = base64Image || (imagesBase64 && imagesBase64[0]) || '';
+  const isJpeg = primaryImg.startsWith('data:image/jpeg') || !primaryImg.startsWith('data:image/png');
   const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
-  const rawBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+  const rawBase64 = primaryImg.includes(',') ? primaryImg.split(',')[1] : primaryImg;
   const cleanBase64 = rawBase64 ? rawBase64.trim() : '';
 
   // 1. Primary: Use Electron Main Process Native Network Stack (Zero CORS, robust error retry, desktop bypass)
@@ -1052,6 +1255,8 @@ export async function solveScreenProblem({
       prompt: promptText,
       systemInstruction: effectiveSystemPrompt,
       imageBase64: cleanBase64,
+      imagesBase64,
+      history,
       model: REASONING_CASCADE[0],
       modelsCascade: REASONING_CASCADE,
       thinkingBudget,
