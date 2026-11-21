@@ -42,6 +42,7 @@ import {
   streamParakeetAnswerFromText,
 } from '../services/groqEngine';
 import { getCachedInterviewContext } from '../services/resumeEngine';
+import { getStoredDetectedProjects } from '../services/resumeAnalyzer';
 import { semanticGuard, ConversationState, ListeningGuardMode } from '../services/semanticGuard';
 
 export type WorkspaceTabType = 'copilot' | 'screen' | 'resume' | 'debrief' | 'audio';
@@ -62,7 +63,7 @@ const TeleprompterAnswerView: React.FC<{ rawText: string }> = ({ rawText }) => {
 
   // Check if text contains Parakeet 2.0 section markers
   const hasSayFirst = /🗣️\s*SAY THIS FIRST/i.test(rawText);
-  const hasCoreBreakdown = /⚡\s*CORE TECHNICAL/i.test(rawText);
+  const hasCoreBreakdown = /⚡\s*(?:CORE TECHNICAL|TECHNICAL DETAILS)/i.test(rawText);
 
   if (!hasSayFirst && !hasCoreBreakdown) {
     return (
@@ -73,8 +74,8 @@ const TeleprompterAnswerView: React.FC<{ rawText: string }> = ({ rawText }) => {
   }
 
   // Parse sections
-  const sayMatch = rawText.match(/🗣️\s*SAY THIS FIRST[^\n]*\n([\s\S]*?)(?=(?:⚡\s*CORE TECHNICAL|💻\s*CODE|🎯\s*LIKELY|$))/i);
-  const coreMatch = rawText.match(/⚡\s*CORE TECHNICAL BREAKDOWN[^\n]*\n([\s\S]*?)(?=(?:💻\s*CODE|🎯\s*LIKELY|$))/i);
+  const sayMatch = rawText.match(/🗣️\s*SAY THIS FIRST[^\n]*\n([\s\S]*?)(?=(?:⚡\s*(?:CORE TECHNICAL|TECHNICAL DETAILS)|💻\s*CODE|🎯\s*LIKELY|$))/i);
+  const coreMatch = rawText.match(/⚡\s*(?:CORE TECHNICAL BREAKDOWN|TECHNICAL DETAILS(?: \(FROM YOUR RESUME\))?)[^\n]*\n([\s\S]*?)(?=(?:💻\s*CODE|🎯\s*LIKELY|$))/i);
   const codeMatch = rawText.match(/💻\s*CODE\s*\/\s*COMPLEXITY[^\n]*\n([\s\S]*?)(?=(?:🎯\s*LIKELY|$))/i);
   const followMatch = rawText.match(/🎯\s*LIKELY FOLLOW-UP[^\n]*\n([\s\S]*)$/i);
 
@@ -123,12 +124,12 @@ const TeleprompterAnswerView: React.FC<{ rawText: string }> = ({ rawText }) => {
         </div>
       )}
 
-      {/* ⚡ CORE TECHNICAL BREAKDOWN & TALKING POINTS */}
+      {/* ⚡ TECHNICAL DETAILS & TALKING POINTS */}
       {coreBreakdown && (
         <div className="p-3 rounded-xl border border-white/10 bg-black/45 space-y-2">
           <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
             <span>⚡</span>
-            <span>Core Technical Breakdown & Talking Points</span>
+            <span>Technical Details (From Verified Resume Dossier)</span>
           </div>
           <div className="text-xs text-slate-200 leading-relaxed space-y-1.5 whitespace-pre-wrap font-sans">
             {coreBreakdown}
@@ -207,6 +208,22 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
   const [generationTimeMs, setGenerationTimeMs] = useState<number | null>(null);
   const [manualInput, setManualInput] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Grounded Candidate Dossier State (Strict Verification)
+  const [detectedProjects, setDetectedProjects] = useState<string[]>(getStoredDetectedProjects());
+
+  useEffect(() => {
+    const updateProjects = () => {
+      setDetectedProjects(getStoredDetectedProjects());
+    };
+    updateProjects();
+    window.addEventListener('storage', updateProjects);
+    const interval = setInterval(updateProjects, 2000);
+    return () => {
+      window.removeEventListener('storage', updateProjects);
+      clearInterval(interval);
+    };
+  }, [activeTab]);
   const [autoTriggerOnSilence, setAutoTriggerOnSilence] = useState(true);
   const [conversationState, setConversationState] = useState<ConversationState>(semanticGuard.getState());
   const [guardMode, setGuardMode] = useState<ListeningGuardMode>(semanticGuard.getListeningMode());
@@ -600,6 +617,12 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
         >
           <FileText className="w-3.5 h-3.5" />
           <span>Context</span>
+          {detectedProjects.length > 0 && (
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
+              title={`${detectedProjects.length} Projects Grounded`}
+            />
+          )}
         </button>
 
         <button
@@ -884,6 +907,16 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
                           Parakeet Stream ({PRIMARY_MODEL})
                         </span>
                       </>
+                    )}
+
+                    {detectedProjects.length > 0 && (
+                      <span
+                        className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-mono border border-emerald-500/30 flex items-center gap-1 shadow-sm"
+                        title={`Grounded strictly in ${detectedProjects.length} resume projects: ${detectedProjects.join(', ')}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Resume Grounded ✓ ({detectedProjects.length} Projects)</span>
+                      </span>
                     )}
 
                     {conversationHistory.length > 0 && (

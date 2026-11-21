@@ -7,6 +7,7 @@
  */
 
 import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA } from './resumeEngine';
+import { getStoredDetectedProjects, getStoredResumeDossier } from './resumeAnalyzer';
 import { streamQuickAnswer, type ConversationTurn } from './geminiLive';
 
 export const GROQ_API_KEY_STORAGE_KEY = 'only_layers_groq_api_key';
@@ -132,8 +133,17 @@ export async function streamGroqAnswer({
     }
   }
 
+  // Build ground-anchored user payload with dynamic dossier projects
+  const detectedProjects = getStoredDetectedProjects();
+  let userPayload = question;
+  if (detectedProjects.length > 0) {
+    userPayload = `[Interviewer Question]: ${question}\n[Grounding Directive]: Answer strictly in first-person as candidate using only Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations.`;
+  } else if (getStoredResumeDossier() || localStorage.getItem('only_layers_resume_text')) {
+    userPayload = `[Interviewer Question]: ${question}\n[Grounding Directive]: Answer strictly in first-person as candidate grounded in Candidate Dossier. Zero hallucinations.`;
+  }
+
   // Append the current question
-  messages.push({ role: 'user', content: question });
+  messages.push({ role: 'user', content: userPayload });
 
   const candidateModels = cachedWorkingGroqModel
     ? [cachedWorkingGroqModel, ...GROQ_MODELS.filter((m) => m !== cachedWorkingGroqModel)]

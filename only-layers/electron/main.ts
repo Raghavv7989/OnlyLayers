@@ -306,9 +306,10 @@ ipcMain.handle('parse-pdf', async (_event, data: number[]) => {
   try {
     const { PDFParse } = require('pdf-parse');
     const buffer = Buffer.from(data);
-    const parser = new PDFParse(buffer);
+    const parser = new PDFParse({ data: buffer });
     await parser.load();
-    const text = await parser.getText();
+    const result = await parser.getText();
+    const text = typeof result === 'string' ? result : (result?.text || '');
     return text || '';
   } catch (err) {
     console.error('PDF parsing error:', err);

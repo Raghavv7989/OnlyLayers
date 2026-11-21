@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { Part } from '@google/genai';
 import { getCachedInterviewContext, buildGroundedParakeetSystemPrompt, BASE_PARAKEET_PERSONA } from './resumeEngine';
+import { getStoredDetectedProjects, getStoredResumeDossier } from './resumeAnalyzer';
 
 const API_KEY_STORAGE_KEY = 'only_layers_gemini_api_key';
 
@@ -103,7 +104,17 @@ export async function streamQuickAnswer({
       contents.push({ role: turn.role, parts: [{ text: turn.text }] });
     }
   }
-  contents.push({ role: 'user', parts: [{ text: prompt }] });
+
+  // Build ground-anchored user payload with dynamic dossier projects
+  const detectedProjects = getStoredDetectedProjects();
+  let userPayload = prompt;
+  if (detectedProjects.length > 0) {
+    userPayload = `[Interviewer Question]: ${prompt}\n[Grounding Directive]: Answer strictly in first-person as candidate using only Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations.`;
+  } else if (getStoredResumeDossier() || localStorage.getItem('only_layers_resume_text')) {
+    userPayload = `[Interviewer Question]: ${prompt}\n[Grounding Directive]: Answer strictly in first-person as candidate grounded in Candidate Dossier. Zero hallucinations.`;
+  }
+
+  contents.push({ role: 'user', parts: [{ text: userPayload }] });
 
   let lastError: unknown = null;
 
