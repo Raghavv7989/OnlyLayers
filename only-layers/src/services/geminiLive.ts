@@ -109,9 +109,9 @@ export async function streamQuickAnswer({
   const detectedProjects = getStoredDetectedProjects();
   let userPayload = prompt;
   if (detectedProjects.length > 0) {
-    userPayload = `[Interviewer Question]: ${prompt}\n[Grounding Directive]: Answer strictly in first-person as candidate using only Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations.`;
+    userPayload = `[Interviewer Question]: ${prompt}\n[Directive]: Answer in natural first-person conversational English as the candidate. Ground strictly in Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations. No robotic bullet dumps.`;
   } else if (getStoredResumeDossier() || localStorage.getItem('only_layers_resume_text')) {
-    userPayload = `[Interviewer Question]: ${prompt}\n[Grounding Directive]: Answer strictly in first-person as candidate grounded in Candidate Dossier. Zero hallucinations.`;
+    userPayload = `[Interviewer Question]: ${prompt}\n[Directive]: Answer in natural first-person conversational English as the candidate grounded in Candidate Dossier. Zero hallucinations. No robotic bullet dumps.`;
   }
 
   contents.push({ role: 'user', parts: [{ text: userPayload }] });

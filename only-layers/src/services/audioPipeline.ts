@@ -82,16 +82,17 @@ export interface AudioPipelineCallbacks {
 const SAMPLE_RATE = 16000;
 const TARGET_WAV_SAMPLE_RATE = 8000;   // 8kHz 16-bit Mono WAV downsampling (half byte size, <35ms upload)
 const FRAME_SIZE = 1024;               // 1024 samples = ~64ms per frame at 16kHz for ultra-snappy response
-const SILENCE_DURATION_MS = 850;       // 850ms natural silence trigger: responsive turn completion without cutting mid-word
-const MIN_SPEECH_DURATION_MS = 450;    // Minimum 450ms spoken speech to filter coughs/clicks
-const MIN_PEAK_RMS_THRESHOLD = 0.020;  // Strict Vocal-Energy Gating: filters background fan noise, AC hum, and breathing
+const SILENCE_DURATION_MS = 700;       // 700ms snappy silence trigger: fires answer immediately when question ends
+const MIN_SPEECH_DURATION_MS = 800;    // Minimum 800ms spoken speech to discard short noise spikes/clicks
+const MIN_PEAK_RMS_THRESHOLD = 0.018;  // Clean RMS energy threshold for speech gating
 const MAX_UTTERANCE_CAP_MS = 25000;    // 25-second max utterance cap for long in-depth interview questions
-const COOLDOWN_MS = 300;               // 300ms ultra-fast debounce between questions
+const COOLDOWN_MS = 250;               // 250ms ultra-fast debounce between questions
 const PRE_ROLL_FRAMES = 10;            // 10 frames * 64ms = ~640ms pre-roll ring buffer
-const CHUNK_MERGE_WINDOW_MS = 2500;    // 2.5s merge window for mid-sentence pauses
+const CHUNK_MERGE_WINDOW_MS = 2000;    // 2.0s merge window for mid-sentence pauses
 
 export class AudioPipelineEngine {
   private isListening = false;
+  private isAnswerLocked = false;
   private vadStatus: VADStatus = 'idle';
   private callbacks: AudioPipelineCallbacks | null = null;
   private listeningGuardMode: ListeningGuardMode = 'smart_dual';
@@ -106,9 +107,7 @@ export class AudioPipelineEngine {
 
   // Web Audio Context & Nodes
   private audioContext: AudioContext | null = null;
-  private micStream: MediaStream | null = null;
   private interviewerStream: MediaStream | null = null;
-  private micAnalyser: AnalyserNode | null = null;
   private interviewerAnalyser: AnalyserNode | null = null;
   private mixerGain: GainNode | null = null;
   private interviewerSource: MediaStreamAudioSourceNode | null = null;
@@ -142,9 +141,17 @@ export class AudioPipelineEngine {
   // DSP Diarization & Software AEC Envelope Tracking (Layer 1 & Layer 2)
   private hasDesktopLoopback = false;
   private sysRmsPeak = 0;
-  private micRmsPeak = 0;
   private netCandidateRmsPeak = 0;
-  private currentSpeakerTag: SpeakerTag = 'SHARED_MIC';
+  private currentSpeakerTag: SpeakerTag = 'SPEAKER_1';
+
+  public setAnswerLocked(locked: boolean): void {
+    this.isAnswerLocked = locked;
+    console.log(`🔒 [AudioPipeline] Answer Lock set to: ${locked}`);
+  }
+
+  public getAnswerLocked(): boolean {
+    return this.isAnswerLocked;
+  }
 
   public getListeningState(): boolean {
     return this.isListening;
@@ -195,7 +202,6 @@ export class AudioPipelineEngine {
     this.isProcessing = false;
     this.utterancePeakRms = 0.01;
     this.sysRmsPeak = 0;
-    this.micRmsPeak = 0;
     this.netCandidateRmsPeak = 0;
     this.currentSpeakerTag = 'SPEAKER_1';
 
@@ -264,114 +270,35 @@ export class AudioPipelineEngine {
         console.log('🔊 [AudioPipeline] AudioContext resumed from suspended state. State:', this.audioContext.state);
       }
 
-      // 2. Microphone Stream Acquisition (Provides physical mic visualizer & graceful VAD fallback)
-      let micSourceNode: MediaStreamAudioSourceNode | null = null;
-      try {
-        this.micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: false,
-            channelCount: 1,
-            sampleRate: SAMPLE_RATE,
-          },
-        });
+      // 2. Strict macOS System Output Audio Loopback (ScreenCaptureKit - AirPods & Speaker Safe)
+      // Zero microphone capture: microphone is 100% disabled to prevent self-triggering when candidate reads answers.
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
 
-        micSourceNode = this.audioContext.createMediaStreamSource(this.micStream);
-        this.micAnalyser = this.audioContext.createAnalyser();
-        this.micAnalyser.fftSize = 256;
-        micSourceNode.connect(this.micAnalyser);
-        console.log('🎤 [AudioPipeline] Local microphone stream initialized successfully.');
-      } catch (micErr) {
-        console.warn('⚠️ [AudioPipeline] Local mic acquisition error (room audio):', micErr);
+      // Immediately drop video track so only system loopback audio remains
+      displayStream.getVideoTracks().forEach((track) => track.stop());
+      const audioTracks = displayStream.getAudioTracks();
+
+      if (!audioTracks || audioTracks.length === 0) {
+        throw new Error('No system audio loopback track available.');
       }
 
-      // 3. Desktop System Audio Loopback Capture (desktopCapturer)
-      try {
-        const getSourcesFn = window.electronAPI?.getDesktopSources || window.electronAPI?.getAudioSources;
-        if (getSourcesFn) {
-          const sources = await getSourcesFn({ types: ['screen', 'window'] });
-          console.log(
-            '🖥️ [AudioPipeline] Available desktop sources:',
-            sources?.length,
-            sources?.map((s) => `${s.id}: ${s.name}`)
-          );
+      this.interviewerStream = new MediaStream(audioTracks);
+      this.interviewerSource = this.audioContext.createMediaStreamSource(this.interviewerStream);
+      this.interviewerAnalyser = this.audioContext.createAnalyser();
+      this.interviewerAnalyser.fftSize = 256;
+      this.interviewerSource.connect(this.interviewerAnalyser);
+      this.hasDesktopLoopback = true;
+      console.log('🎧 [AudioPipeline] ScreenCaptureKit system audio loopback initialized successfully (AirPods & Speaker safe).');
 
-          if (sources && sources.length > 0) {
-            // Prioritize primary screen or known meeting apps
-            const targetSource =
-              sources.find((s) => s.id?.startsWith('screen:')) ||
-              sources.find((s) => /zoom|meet|teams|slack|webex|call|chrome|browser/i.test(s.name)) ||
-              sources[0];
-
-            console.log('🎯 [AudioPipeline] Initializing desktop audio stream for source:', targetSource.id, targetSource.name);
-
-            const constraints = {
-              audio: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: targetSource.id,
-                },
-              },
-              video: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: targetSource.id,
-                  maxWidth: 1920,
-                  maxHeight: 1080,
-                },
-              },
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const desktopStream = await (navigator.mediaDevices as any).getUserMedia(constraints);
-
-            // Disable video track without stopping it (calling track.stop() cancels Chromium desktop capture session)
-            desktopStream.getVideoTracks().forEach((track: MediaStreamTrack) => {
-              track.enabled = false;
-            });
-
-            const audioTracks = desktopStream.getAudioTracks();
-            console.log(
-              '🔊 [AudioPipeline] Desktop audio tracks obtained:',
-              audioTracks.length,
-              audioTracks.map((t: MediaStreamTrack) => t.label)
-            );
-
-            if (audioTracks.length > 0) {
-              this.interviewerStream = new MediaStream(audioTracks);
-              this.interviewerSource = this.audioContext.createMediaStreamSource(this.interviewerStream);
-              this.interviewerAnalyser = this.audioContext.createAnalyser();
-              this.interviewerAnalyser.fftSize = 256;
-              this.interviewerSource.connect(this.interviewerAnalyser);
-              this.hasDesktopLoopback = true;
-              console.log('🎧 [AudioPipeline] Primary system loopback audio source initialized.');
-            }
-          }
-        }
-      } catch (sysErr) {
-        console.warn('⚠️ [AudioPipeline] Desktop loopback audio capture error:', sysErr);
-      }
-
-      // 4. Ensure Web Audio Processing Graph Has An Active Connected Input Node
+      // 3. Web Audio Processing Graph: Interviewer System Loopback -> ScriptProcessor -> SilentGain -> Destination
       this.scriptProcessor = this.audioContext.createScriptProcessor(FRAME_SIZE, 1, 1);
       this.silentGain = this.audioContext.createGain();
       this.silentGain.gain.value = 0; // Prevents speaker acoustic feedback while keeping graph alive in Chromium
 
-      if (this.interviewerSource) {
-        // EXCLUSIVE: Connect primary system loopback audio to the question VAD
-        this.interviewerSource.connect(this.scriptProcessor);
-        this.hasDesktopLoopback = true;
-        console.log('🎧 [AudioPipeline] Connected system audio loopback to ScriptProcessor VAD.');
-      } else if (micSourceNode) {
-        // Fallback: If OS desktop audio loopback has no tracks on current hardware, route mic to VAD so HUD is never deaf
-        micSourceNode.connect(this.scriptProcessor);
-        this.hasDesktopLoopback = false;
-        console.warn('⚠️ [AudioPipeline] No desktop audio loopback track available. Routing microphone to ScriptProcessor so listening remains fully active!');
-      } else {
-        console.error('❌ [AudioPipeline] No audio sources available to connect to ScriptProcessor!');
-      }
-
+      this.interviewerSource.connect(this.scriptProcessor);
       this.scriptProcessor.connect(this.silentGain);
       this.silentGain.connect(this.audioContext.destination);
 
@@ -381,37 +308,25 @@ export class AudioPipelineEngine {
         console.log('🔊 [AudioPipeline] AudioContext verified active. State:', this.audioContext.state);
       }
 
-      // 5. Real-Time System Audio VAD Process Handler with Frame Logging
+      // 4. Real-Time System Audio VAD Process Handler with Frame Logging
       let frameCounter = 0;
       this.scriptProcessor.onaudioprocess = (event: AudioProcessingEvent) => {
         if (!this.isListening) return;
 
         const inputBuffer = event.inputBuffer.getChannelData(0);
 
-        // Calculate real-time RMS of active audio stream
+        // Calculate real-time RMS of active system loopback stream
         let sumSquares = 0;
         for (let i = 0; i < inputBuffer.length; i++) {
           sumSquares += inputBuffer[i] * inputBuffer[i];
         }
         const rms = Math.sqrt(sumSquares / inputBuffer.length);
 
-        // Measure local physical microphone level for UI meter
-        let micRms = 0;
-        if (this.micAnalyser) {
-          const micData = new Float32Array(this.micAnalyser.fftSize);
-          this.micAnalyser.getFloatTimeDomainData(micData);
-          let micSum = 0;
-          for (let i = 0; i < micData.length; i++) {
-            micSum += micData[i] * micData[i];
-          }
-          micRms = Math.sqrt(micSum / micData.length);
-        }
-
         // Console frame logging to verify active data flow
         frameCounter++;
         if (frameCounter % 16 === 0 || rms > 0.015) {
           console.log(
-            `[AudioPipeline Frame] RMS: ${rms.toFixed(5)} | Mic: ${micRms.toFixed(5)} | Speaking: ${this.isSpeaking} | NoiseFloor: ${this.noiseFloor.toFixed(5)} | Loopback: ${this.hasDesktopLoopback}`
+            `[AudioPipeline Frame] System RMS: ${rms.toFixed(5)} | Speaking: ${this.isSpeaking} | NoiseFloor: ${this.noiseFloor.toFixed(5)} | Locked: ${this.isAnswerLocked}`
           );
         }
 
@@ -422,9 +337,7 @@ export class AudioPipelineEngine {
           this.preRollRingBuffer.shift();
         }
 
-        const sysRms = rms;
-        const micVolume = Math.min(100, Math.round(micRms * 400));
-        const interviewerVolume = Math.min(100, Math.round(sysRms * 400));
+        const interviewerVolume = Math.min(100, Math.round(rms * 400));
 
         // Maintain 8-bar rolling waveform for UI
         this.waveformHistory.push(Math.min(100, Math.round(rms * 500)));
@@ -434,7 +347,7 @@ export class AudioPipelineEngine {
 
         if (this.callbacks) {
           this.callbacks.onVolumeChange({
-            mic: micVolume,
+            mic: 0, // Physical mic is 100% disabled
             interviewer: interviewerVolume,
             waveform: [...this.waveformHistory],
           });
@@ -442,8 +355,8 @@ export class AudioPipelineEngine {
 
         const now = Date.now();
 
-        // If in brief debounce cooldown or currently processing an answer, skip speech trigger
-        if (this.vadStatus === 'cooldown' || this.isProcessing) {
+        // If in brief debounce cooldown, currently processing, or answer is locked, skip speech trigger
+        if (this.vadStatus === 'cooldown' || this.isProcessing || this.isAnswerLocked) {
           if (this.callbacks?.onDiagnostics) {
             this.callbacks.onDiagnostics({
               rms,
@@ -478,8 +391,7 @@ export class AudioPipelineEngine {
             this.speechStartTime = now;
             this.silenceStartTime = 0;
             this.utterancePeakRms = rms;
-            this.sysRmsPeak = sysRms;
-            this.micRmsPeak = micRms;
+            this.sysRmsPeak = rms;
             this.utteranceBuffer = [];
             this.totalSampleCount = 0;
 
@@ -505,8 +417,7 @@ export class AudioPipelineEngine {
         } else {
           // CURRENTLY RECORDING SYSTEM AUDIO SPEECH
           this.utterancePeakRms = Math.max(this.utterancePeakRms, rms);
-          this.sysRmsPeak = Math.max(this.sysRmsPeak, sysRms);
-          this.micRmsPeak = Math.max(this.micRmsPeak, micRms);
+          this.sysRmsPeak = Math.max(this.sysRmsPeak, rms);
           this.utteranceBuffer.push(frameCopy);
           this.totalSampleCount += frameCopy.length;
 
@@ -591,7 +502,6 @@ export class AudioPipelineEngine {
     this.totalSampleCount = 0;
     this.utterancePeakRms = 0.01;
     this.sysRmsPeak = 0;
-    this.micRmsPeak = 0;
     this.netCandidateRmsPeak = 0;
     this.notifyStatus('processing', '⚡ Transcribing Question (Sub-300ms ASR)...');
   }
@@ -603,7 +513,6 @@ export class AudioPipelineEngine {
     this.totalSampleCount = 0;
     this.utterancePeakRms = 0.01;
     this.sysRmsPeak = 0;
-    this.micRmsPeak = 0;
     this.netCandidateRmsPeak = 0;
     this.notifyStatus('ready', '🎧 System Listening — Interviewer Stream Active');
     if (this.callbacks) {
@@ -742,6 +651,25 @@ export class AudioPipelineEngine {
         isFinal: true,
       });
 
+      // Discard short noise fragments, interjections, or filler acknowledgements (< 3 words)
+      const words = finalQuestionText.trim().split(/\s+/).filter(Boolean);
+      const isFiller = /^(?:yeah|yes|yep|okay|ok|uh-huh|right|sure|cool|got it|mhm|mm|ah|oh)\.?$/i.test(finalQuestionText.trim());
+
+      if (words.length < 3 || isFiller) {
+        console.log(`[AudioPipeline] Discarded short fragment/filler (${words.length} words): "${finalQuestionText}"`);
+        this.isProcessing = false;
+        this.notifyStatus('ready', '🎧 System Listening — Interviewer Stream Active');
+        return;
+      }
+
+      // Check if user locked the active answer on screen
+      if (this.isAnswerLocked) {
+        console.log('🔒 [AudioPipeline] Answer generation skipped: Current answer is locked on screen.');
+        this.isProcessing = false;
+        this.notifyStatus('ready', '🔒 Answer Locked — System Stream Active');
+        return;
+      }
+
       // Release lock & IMMEDIATELY pipe into Stage 2 Parakeet LLM streaming (Zero artificial debounce)
       this.isProcessing = false;
       await this.dispatchAnswerGeneration(finalQuestionText, startTime);
@@ -760,6 +688,12 @@ export class AudioPipelineEngine {
    * Runs with zero artificial buffering and supports sub-millisecond abort cancellation.
    */
   public async dispatchAnswerGeneration(questionText: string, startTime: number): Promise<void> {
+    if (this.isAnswerLocked) {
+      console.log('🔒 [AudioPipeline] dispatchAnswerGeneration blocked: Answer is locked.');
+      this.isProcessing = false;
+      return;
+    }
+
     if (this.isProcessing) {
       this.abortActiveGeneration();
     }
@@ -869,7 +803,6 @@ export class AudioPipelineEngine {
     this.hasDesktopLoopback = false;
     this.currentSpeakerTag = 'SPEAKER_1';
     this.sysRmsPeak = 0;
-    this.micRmsPeak = 0;
     this.netCandidateRmsPeak = 0;
 
     this.lastUtteranceText = '';
@@ -907,11 +840,6 @@ export class AudioPipelineEngine {
         this.silentGain.disconnect();
       } catch {}
       this.silentGain = null;
-    }
-
-    if (this.micStream) {
-      this.micStream.getTracks().forEach((t) => t.stop());
-      this.micStream = null;
     }
 
     if (this.interviewerStream) {

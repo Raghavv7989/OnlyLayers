@@ -137,9 +137,9 @@ export async function streamGroqAnswer({
   const detectedProjects = getStoredDetectedProjects();
   let userPayload = question;
   if (detectedProjects.length > 0) {
-    userPayload = `[Interviewer Question]: ${question}\n[Grounding Directive]: Answer strictly in first-person as candidate using only Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations.`;
+    userPayload = `[Interviewer Question]: ${question}\n[Directive]: Answer in natural first-person conversational English as the candidate. Ground strictly in Candidate Dossier projects (${detectedProjects.slice(0, 4).join(', ')}). Zero hallucinations. No robotic bullet dumps.`;
   } else if (getStoredResumeDossier() || localStorage.getItem('only_layers_resume_text')) {
-    userPayload = `[Interviewer Question]: ${question}\n[Grounding Directive]: Answer strictly in first-person as candidate grounded in Candidate Dossier. Zero hallucinations.`;
+    userPayload = `[Interviewer Question]: ${question}\n[Directive]: Answer in natural first-person conversational English as the candidate grounded in Candidate Dossier. Zero hallucinations. No robotic bullet dumps.`;
   }
 
   // Append the current question
@@ -166,8 +166,8 @@ export async function streamGroqAnswer({
         },
         body: JSON.stringify({
           model,
-          temperature: 0.15,
-          max_tokens: 850,
+          temperature: 0.4,
+          max_tokens: 350,
           stream: true,
           messages,
         }),

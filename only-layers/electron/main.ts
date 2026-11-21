@@ -128,6 +128,17 @@ function createWindow() {
     return allowed.includes(permission);
   });
 
+  // Strict System-Only Audio Loopback via ScreenCaptureKit (AirPods & Speaker safe, zero mic)
+  session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      callback({ video: sources[0], audio: 'loopback' });
+    } catch (err) {
+      console.error('[Main] setDisplayMediaRequestHandler error:', err);
+      callback({});
+    }
+  });
+
   enforceOverlayLayer(mainWindow);
 
   mainWindow.once('ready-to-show', () => {

@@ -66,13 +66,17 @@ export const AudioLoopback: React.FC = () => {
     audioChunksRef.current = [];
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: false, // Prevents background room noise amplification during silence
-        },
+      // Strict system audio loopback capture (zero mic capture)
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
       });
+      displayStream.getVideoTracks().forEach((track) => track.stop());
+      const audioTracks = displayStream.getAudioTracks();
+      if (!audioTracks || audioTracks.length === 0) {
+        throw new Error('No system audio loopback track available.');
+      }
+      const stream = new MediaStream(audioTracks);
       mediaStreamRef.current = stream;
 
       // 1. Audio Visualizer using AudioContext

@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Shield,
   Unlock,
+  Lock,
 } from 'lucide-react';
 import { TranscriptTicker } from './TranscriptTicker';
 import { ScreenSolver } from './ScreenSolver';
@@ -58,29 +59,40 @@ interface WorkspaceTabsProps {
  * - Renders 💻 CODE / COMPLEXITY in a dark monospace code box with 1-click Copy
  * - Renders 🎯 LIKELY FOLLOW-UP in an accented counter-answer container
  */
-const TeleprompterAnswerView: React.FC<{ rawText: string }> = ({ rawText }) => {
+const TeleprompterAnswerView: React.FC<{ rawText: string; isLocked?: boolean }> = ({ rawText, isLocked }) => {
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // Check if text contains Parakeet 2.0 section markers
-  const hasSayFirst = /🗣️\s*SAY THIS FIRST/i.test(rawText);
-  const hasCoreBreakdown = /⚡\s*(?:CORE TECHNICAL|TECHNICAL DETAILS)/i.test(rawText);
+  // Check if text contains Parakeet section markers (Natural Spoken Script or legacy tags)
+  const hasSaySection = /🗣️\s*SAY THIS/i.test(rawText);
+  const hasCuesSection = /⚡\s*(?:QUICK CUES|CORE TECHNICAL|TECHNICAL DETAILS)/i.test(rawText);
 
-  if (!hasSayFirst && !hasCoreBreakdown) {
+  if (!hasSaySection && !hasCuesSection) {
     return (
-      <div className="whitespace-pre-wrap font-sans text-xs text-slate-100 leading-relaxed">
-        {rawText}
+      <div className="space-y-2">
+        {isLocked && (
+          <div className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[11px] font-mono font-semibold flex items-center justify-between shadow-sm">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>🔒 Answer Frozen on Screen (Zero Interruptions)</span>
+            </span>
+            <span className="text-[10px] text-amber-300/80 font-normal">Press Cmd+L to unlock</span>
+          </div>
+        )}
+        <div className="whitespace-pre-wrap font-sans text-xs text-slate-100 leading-relaxed">
+          {rawText}
+        </div>
       </div>
     );
   }
 
   // Parse sections
-  const sayMatch = rawText.match(/🗣️\s*SAY THIS FIRST[^\n]*\n([\s\S]*?)(?=(?:⚡\s*(?:CORE TECHNICAL|TECHNICAL DETAILS)|💻\s*CODE|🎯\s*LIKELY|$))/i);
-  const coreMatch = rawText.match(/⚡\s*(?:CORE TECHNICAL BREAKDOWN|TECHNICAL DETAILS(?: \(FROM YOUR RESUME\))?)[^\n]*\n([\s\S]*?)(?=(?:💻\s*CODE|🎯\s*LIKELY|$))/i);
+  const sayMatch = rawText.match(/🗣️\s*SAY THIS[^\n]*\n([\s\S]*?)(?=(?:⚡\s*(?:QUICK CUES|CORE TECHNICAL|TECHNICAL DETAILS)|💻\s*CODE|🎯\s*LIKELY|$))/i);
+  const cuesMatch = rawText.match(/⚡\s*(?:QUICK CUES(?: \(GLANCE ONLY\))?|CORE TECHNICAL BREAKDOWN|TECHNICAL DETAILS(?: \(FROM YOUR RESUME\))?)[^\n]*\n([\s\S]*?)(?=(?:💻\s*CODE|🎯\s*LIKELY|$))/i);
   const codeMatch = rawText.match(/💻\s*CODE\s*\/\s*COMPLEXITY[^\n]*\n([\s\S]*?)(?=(?:🎯\s*LIKELY|$))/i);
   const followMatch = rawText.match(/🎯\s*LIKELY FOLLOW-UP[^\n]*\n([\s\S]*)$/i);
 
-  const sayFirst = sayMatch ? sayMatch[1].trim() : '';
-  const coreBreakdown = coreMatch ? coreMatch[1].trim() : '';
+  const sayScript = sayMatch ? sayMatch[1].trim() : '';
+  const quickCues = cuesMatch ? cuesMatch[1].trim() : '';
   const codeSection = codeMatch ? codeMatch[1].trim() : '';
   const followUp = followMatch ? followMatch[1].trim() : '';
 
@@ -106,33 +118,44 @@ const TeleprompterAnswerView: React.FC<{ rawText: string }> = ({ rawText }) => {
 
   return (
     <div className="space-y-3 font-sans pb-2">
-      {/* 🗣️ SAY THIS FIRST — Highlighted Teleprompter Card */}
-      {sayFirst && (
+      {/* Answer Lock Active Banner */}
+      {isLocked && (
+        <div className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[11px] font-mono font-semibold flex items-center justify-between shadow-sm">
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span>🔒 Answer Frozen on Screen (Zero Interruptions)</span>
+          </span>
+          <span className="text-[10px] text-amber-300/80 font-normal">Press Cmd+L to unlock</span>
+        </div>
+      )}
+
+      {/* 🗣️ SAY THIS (NATURAL SPOKEN SCRIPT) — Highlighted Teleprompter Card */}
+      {sayScript && (
         <div className="p-3.5 rounded-xl border-2 border-cyan-400/60 bg-gradient-to-br from-cyan-950/70 via-slate-900/90 to-black/70 shadow-lg shadow-cyan-950/50">
           <div className="flex items-center justify-between text-[11px] font-mono font-bold uppercase text-cyan-300 mb-2 tracking-wider">
             <span className="flex items-center gap-1.5">
               <span className="text-sm">🗣️</span>
-              <span>Say This First (Verbatim Spoken Hook)</span>
+              <span>Say This (Natural Spoken Script)</span>
             </span>
             <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-200 border border-cyan-400/40 font-mono font-semibold">
-              Read Aloud Directly
+              Read Aloud Verbatim
             </span>
           </div>
-          <p className="text-sm font-semibold text-white leading-relaxed select-text font-sans pl-0.5">
-            {sayFirst.replace(/^"|"$/g, '')}
+          <p className="text-sm font-medium text-white leading-relaxed select-text font-sans pl-0.5 whitespace-pre-wrap">
+            {sayScript.replace(/^"|"$/g, '')}
           </p>
         </div>
       )}
 
-      {/* ⚡ TECHNICAL DETAILS & TALKING POINTS */}
-      {coreBreakdown && (
+      {/* ⚡ QUICK CUES (GLANCE ONLY) */}
+      {quickCues && (
         <div className="p-3 rounded-xl border border-white/10 bg-black/45 space-y-2">
           <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
             <span>⚡</span>
-            <span>Technical Details (From Verified Resume Dossier)</span>
+            <span>Quick Cues (Glance Only)</span>
           </div>
-          <div className="text-xs text-slate-200 leading-relaxed space-y-1.5 whitespace-pre-wrap font-sans">
-            {coreBreakdown}
+          <div className="text-xs text-slate-200 leading-relaxed space-y-1.5 whitespace-pre-wrap font-sans select-text">
+            {quickCues}
           </div>
         </div>
       )}
@@ -208,6 +231,19 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
   const [generationTimeMs, setGenerationTimeMs] = useState<number | null>(null);
   const [manualInput, setManualInput] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Answer Lock State: freeze answer on screen and block incoming audio overwrites (Cmd+L)
+  const [isAnswerLocked, setIsAnswerLocked] = useState(false);
+  const isAnswerLockedRef = useRef(false);
+
+  const handleToggleAnswerLock = () => {
+    setIsAnswerLocked((prev) => {
+      const next = !prev;
+      isAnswerLockedRef.current = next;
+      audioPipeline.setAnswerLocked(next);
+      return next;
+    });
+  };
 
   // Grounded Candidate Dossier State (Strict Verification)
   const [detectedProjects, setDetectedProjects] = useState<string[]>(getStoredDetectedProjects());
@@ -331,6 +367,9 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
       } else if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'r')) {
         e.preventDefault();
         semanticGuard.unlockAwaitingQuestion();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        handleToggleAnswerLock();
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         window.electronAPI?.toggleHud?.();
@@ -389,6 +428,7 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
             }
           },
           onAnswerChunk: (answerText, isDone, latencyMs) => {
+            if (isAnswerLockedRef.current) return;
             if (answerText) {
               setIsGenerating(true);
               setStreamingAnswer(answerText);
@@ -503,6 +543,11 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
   const triggerInterviewerQuestion = async (questionText: string) => {
     if (!questionText.trim()) return;
     const cleanQ = questionText.trim();
+
+    // Auto-unlock if user manually triggers a new question
+    if (isAnswerLockedRef.current) {
+      handleToggleAnswerLock();
+    }
 
     // 1. Add to rolling transcript feed as Interviewer (avoid duplicate if identical to latest)
     setTranscriptSegments((prev) => {
@@ -840,10 +885,10 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 font-semibold">
                     <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
-                    <span>🎧 System Audio Listening (Interviewer Stream Active)</span>
+                    <span>🎧 System Audio Loopback (Zero Mic • AirPods Safe)</span>
                   </div>
                   <span className="text-[10px] text-slate-400 hidden sm:inline">
-                    Mic echo disabled • Read answers aloud safely
+                    ScreenCaptureKit system loopback • Mic 100% disabled • No self-triggering
                   </span>
                 </div>
 
@@ -933,6 +978,29 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
                   </div>
 
                   <div className="flex items-center gap-1">
+                    {/* Answer Lock Toggle Button */}
+                    <button
+                      onClick={handleToggleAnswerLock}
+                      title="Freeze current answer on screen so it is never overwritten (Cmd + L)"
+                      className={`px-2 py-0.5 rounded text-[9px] font-mono flex items-center gap-1 transition-all ${
+                        isAnswerLocked
+                          ? 'bg-amber-500/25 text-amber-300 border border-amber-400/40 font-bold shadow-sm shadow-amber-950/50'
+                          : 'hover:bg-white/10 text-slate-400 hover:text-slate-200 border border-white/5'
+                      }`}
+                    >
+                      {isAnswerLocked ? (
+                        <>
+                          <Lock className="w-2.5 h-2.5 text-amber-400 animate-pulse" />
+                          <span>Locked (Cmd+L)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Unlock className="w-2.5 h-2.5" />
+                          <span>Lock (Cmd+L)</span>
+                        </>
+                      )}
+                    </button>
+
                     {conversationHistory.length > 0 && (
                       <button
                         onClick={handleResetConversationMemory}
@@ -967,13 +1035,13 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ initialTab = 'copi
                   )}
 
                   {streamingAnswer ? (
-                    <TeleprompterAnswerView rawText={streamingAnswer} />
+                    <TeleprompterAnswerView rawText={streamingAnswer} isLocked={isAnswerLocked} />
                   ) : (
                     !isGenerating && (
                       <div className="flex flex-col items-center justify-center h-full py-6 text-slate-500 text-center space-y-1 select-none">
                         <Zap className="w-5 h-5 text-slate-600" />
                         <p className="text-xs font-sans">
-                          Answers stream token-by-token automatically upon 280ms silence pause.
+                          Answers stream token-by-token automatically upon 700ms silence pause.
                         </p>
                         <p className="text-[10px] font-mono text-slate-600">
                           Structured as: 🗣️ SAY THIS FIRST • ⚡ CORE TECHNICAL BREAKDOWN • 💻 CODE • 🎯 LIKELY FOLLOW-UP
